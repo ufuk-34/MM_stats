@@ -77,6 +77,8 @@ def create_app(test_config=None, data_dir=None):
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE") == "1",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+        # Ortak bilgisayar: bu kadar dakika işlem yapılmazsa oturum kendiliğinden kapanır
+        IDLE_TIMEOUT_MINUTES=int(os.environ.get("IDLE_TIMEOUT_MINUTES", "15")),
         TICKETS_PER_PAGE=50,
     )
     if test_config:
@@ -110,7 +112,9 @@ def create_app(test_config=None, data_dir=None):
     from .cli import register_cli
     register_cli(app)
 
+    _register_local_only(app)
     _register_csrf(app)
+    _register_idle_timeout(app)
     _register_initial_setup(app, User)
     _register_template_helpers(app, Setting)
     _register_error_handlers(app)
@@ -155,6 +159,41 @@ def _register_csrf(app):
                 abort(400, description="Oturum doğrulaması başarısız. Sayfayı yenileyip tekrar deneyiniz.")
 
     app.jinja_env.globals["csrf_token"] = csrf_token
+
+
+LOCAL_ADDRESSES = {"127.0.0.1", "::1"}
+
+
+def _register_local_only(app):
+    """Program yalnızca kurulu olduğu bilgisayardan kullanılır.
+
+    Sunucu zaten yalnızca 127.0.0.1'i dinler; bu kontrol ikinci bir güvenlik katmanıdır.
+    """
+    @app.before_request
+    def reject_remote():
+        if request.remote_addr not in LOCAL_ADDRESSES:
+            abort(403)
+
+
+def _register_idle_timeout(app):
+    """Belirli süre işlem yapılmayan oturumu kapatır (ortak bilgisayar güvenliği)."""
+    from flask_login import current_user, logout_user
+    import time
+
+    @app.before_request
+    def idle_logout():
+        if request.endpoint == "static" or not current_user.is_authenticated:
+            return None
+        now = time.time()
+        last = session.get("last_seen")
+        if last and now - last > app.config["IDLE_TIMEOUT_MINUTES"] * 60:
+            logout_user()
+            session.clear()
+            from flask import flash
+            flash("Uzun süre işlem yapılmadığı için oturumunuz kapatıldı. Lütfen tekrar giriş yapınız.", "warning")
+            return redirect(url_for("auth.login"))
+        session["last_seen"] = now
+        return None
 
 
 def _register_initial_setup(app, User):

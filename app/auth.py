@@ -104,6 +104,13 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
+@bp.route("/oturum")
+@login_required
+def keepalive():
+    """Kullanıcı ekranda aktifken (yazıyor / tıklıyor) oturumu açık tutar; bkz. app.js."""
+    return "", 204
+
+
 @bp.route("/password", methods=["GET", "POST"])
 @login_required
 def change_password():
@@ -125,23 +132,14 @@ def change_password():
     return render_template("auth/password.html")
 
 
-LOCAL_ADDRESSES = {"127.0.0.1", "::1", "localhost"}
-
-
 @bp.route("/kurulum", methods=["GET", "POST"])
 def setup():
-    """İlk kurulum: hiç yönetici yokken ilk yönetici hesabı oluşturulur.
-
-    Güvenlik için yalnızca programın kurulu olduğu bilgisayardan (localhost) yapılabilir.
-    """
+    """İlk kurulum: hiç yönetici yokken ilk yönetici hesabı oluşturulur."""
     has_admin = db.session.execute(
         db.select(User.id).where(User.role == ROLE_ADMIN, User.active.is_(True)).limit(1)
     ).first()
     if has_admin:
         return redirect(url_for("auth.login"))
-    if request.remote_addr not in LOCAL_ADDRESSES:
-        return render_template("auth/setup.html", remote=True, form={}), 403
-
     form = request.form if request.method == "POST" else {}
     if request.method == "POST":
         org_name = form.get("org_name", "").strip()[:100]
@@ -175,4 +173,4 @@ def setup():
             login_user(user)
             flash("Kurulum tamamlandı. Programı kullanmaya başlayabilirsiniz.", "success")
             return redirect(url_for("dashboard.index"))
-    return render_template("auth/setup.html", remote=False, form=form)
+    return render_template("auth/setup.html", form=form)

@@ -28,6 +28,29 @@
     input.addEventListener("change", function () { input.form.submit(); });
   });
 
+  // Ortak bilgisayar: hareketsizlikte oturumu kapat, kullanım sürerken açık tut.
+  // Sunucu, son istekten bu yana süre dolduysa oturumu kapatır. Kullanıcı formu doldururken
+  // (klavye/fare hareketi) arka planda kısa bir istek gönderilir; böylece uzun telefon
+  // görüşmesinde yazılan kayıt kaybolmaz. Gerçekten hareketsiz kalınırsa sayfa yenilenir ve
+  // giriş ekranına dönülür (ekranda kişisel veri açık kalmaz).
+  var idleMinutes = parseInt(document.body.dataset.idleMinutes || "0", 10);
+  if (idleMinutes > 0) {
+    var lastActivity = Date.now(), lastPing = Date.now();
+    var mark = function () { lastActivity = Date.now(); };
+    ["keydown", "mousedown", "mousemove", "wheel", "touchstart"].forEach(function (ev) {
+      document.addEventListener(ev, mark, { passive: true });
+    });
+    setInterval(function () {
+      var now = Date.now();
+      if (now - lastActivity > idleMinutes * 60000) {
+        window.location.reload();
+      } else if (now - lastActivity < 120000 && now - lastPing > 120000) {
+        lastPing = now;
+        fetch(document.body.dataset.keepaliveUrl, { credentials: "same-origin" }).catch(function () {});
+      }
+    }, 20000);
+  }
+
   // Aynı formun iki kez gönderilmesini engelle (mükerrer kayıt önlemi)
   document.querySelectorAll("form[method=post]").forEach(function (form) {
     form.addEventListener("submit", function (e) {

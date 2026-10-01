@@ -17,14 +17,17 @@ personel tarafından **manuel** kaydedildiği ve istatistiklerinin tutulduğu k�
 
 ## Windows'ta tek bilgisayara kurulum (önerilen)
 
-Program bir bilgisayara kurulur; o bilgisayardan ve aynı ağdaki diğer bilgisayarlardan
-tarayıcı ile (`http://BILGISAYAR-IP:8000`) kullanılır. Diğer bilgisayarlara bir şey kurulmaz.
+Program **tek bir bilgisayara** kurulur ve yalnızca o bilgisayarda kullanılır. Sunucu sadece
+`127.0.0.1` adresini dinler (ayrıca uygulama yerel olmayan istekleri 403 ile reddeder); ağdaki diğer
+bilgisayarlar bağlanamaz, internet bağlantısı gerekmez. Tüm personel kayıtlarını bu bilgisayarda
+kendi hesabıyla girer; ortak kullanım için 15 dakika hareketsizlikte oturum kendiliğinden kapanır
+(`IDLE_TIMEOUT_MINUTES`).
 
 1. GitHub → **Actions** → "Windows Kurulum Dosyası" → son başarılı çalıştırma → **Artifacts** →
    `DestekKayit-Windows` indirilir. İçinde `DestekKayit-Kurulum.exe` (kurulum sihirbazı) ve
    `DestekKayit-Tasinabilir.zip` (kurulumsuz sürüm) bulunur.
-2. `DestekKayit-Kurulum.exe` çalıştırılır (C:\DestekKayit klasörüne kurar, masaüstü kısayolu,
-   güvenlik duvarı izni ve isteğe bağlı otomatik başlatma).
+2. `DestekKayit-Kurulum.exe` çalıştırılır (C:\DestekKayit klasörüne kurar, masaüstü kısayolu ve
+   isteğe bağlı otomatik başlatma).
 3. Program ilk açıldığında tarayıcıda **İlk Kurulum** ekranı gelir; yönetici hesabı burada oluşturulur.
 
 Ayrıntılı, teknik olmayan kılavuz: [KURULUM.md](KURULUM.md)
@@ -51,13 +54,13 @@ python -m venv .venv
 # 4) (İsteğe bağlı) Demo veri: 5 demo personel + 45 kayıt (demo personel şifresi: Demo.12345)
 .venv/bin/flask --app app seed-demo
 
-# 5) Uygulamayı başlat  ->  http://SUNUCU_IP:8000
+# 5) Uygulamayı başlat  ->  http://127.0.0.1:8000 (yalnızca bu bilgisayardan)
 .venv/bin/python run.py                             # Windows: .venv\Scripts\python run.py
 #    Seçenekler: --port 8080, --no-browser, --yonetici-sifirla
 ```
 
 Ortam değişkenleri (isteğe bağlı): `DESTEK_DATA_DIR` (veri klasörü; varsayılan programın yanındaki
-`veri/`), `PORT`, `HOST`, `SECRET_KEY` (verilmezse veri klasöründe bir kez üretilir), `DATABASE_URL`,
+`veri/`), `PORT`, `IDLE_TIMEOUT_MINUTES` (varsayılan 15), `SECRET_KEY` (verilmezse veri klasöründe bir kez üretilir), `DATABASE_URL`,
 `SESSION_COOKIE_SECURE=1` (HTTPS arkasında çalışılıyorsa).
 
 `create-admin` mevcut bir kullanıcı adıyla çalıştırılırsa o kullanıcıyı yönetici yapar ve şifresini sıfırlar
@@ -95,7 +98,7 @@ arşiv, işlem geçmişi, yönetim ekranları, demo temizleme, CSRF, giriş kili
 | `app/admin.py` | Projeler, kategoriler, personel, sistem ayarları |
 | `app/demo.py`, `app/cli.py` | Demo veri ve komut satırı komutları |
 | `app/backup.py` | Günlük otomatik ve elle veritabanı yedeği |
-| `run.py` | Başlatıcı (.exe giriş noktası): sunucu, tarayıcı, ağ adresleri, yedek zamanlayıcı |
+| `run.py` | Başlatıcı (.exe giriş noktası): yalnızca localhost'ta sunucu, tarayıcı, yedek zamanlayıcı |
 | `packaging/` | PyInstaller tanımı ve Inno Setup kurulum betiği |
 
 ## Veritabanı

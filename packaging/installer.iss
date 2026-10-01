@@ -7,7 +7,6 @@
 #endif
 #define AppName "Teknik Destek Kayıt Programı"
 #define AppExe "DestekKayit.exe"
-#define AppPort "8000"
 
 [Setup]
 AppId={{6E4B7C1A-2F3D-4B8E-9C5A-7D1E3F2A4B6C}
@@ -33,7 +32,6 @@ Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Masaüstüne kısayol oluştur"
-Name: "firewall"; Description: "Ağdaki diğer bilgisayarların programa bağlanmasına izin ver (Windows Güvenlik Duvarı, port {#AppPort})"
 Name: "startup"; Description: "Windows açıldığında programı otomatik başlat"; Flags: unchecked
 
 [Dirs]
@@ -53,8 +51,8 @@ Name: "{autoprograms}\Teknik Destek Kayıt\Kullanım Kılavuzu"; Filename: "{app
 Name: "{autostartup}\Teknik Destek Kayıt"; Filename: "{app}\{#AppExe}"; Parameters: "--no-browser"; WorkingDir: "{app}"; Flags: runminimized; Tasks: startup
 
 [Run]
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Teknik Destek Kayit"""; Flags: runhidden; Tasks: firewall
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Teknik Destek Kayit"" dir=in action=allow protocol=TCP localport={#AppPort} profile=domain,private"; Flags: runhidden; Tasks: firewall
+; Program yalnızca bu bilgisayarda çalışır; önceki sürümün açtığı güvenlik duvarı izni varsa kaldırılır
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Teknik Destek Kayit"""; Flags: runhidden
 Filename: "{app}\{#AppExe}"; Description: "Programı şimdi başlat"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]

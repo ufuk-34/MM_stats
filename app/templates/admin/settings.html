@@ -33,15 +33,11 @@
 {% endif %}
 
 <div class="card form-narrow">
-  <h2>Erişim ve Yedekleme</h2>
-  {% if access_urls %}
-  <p>Diğer bilgisayarlar tarayıcıdan şu adresle bağlanır:<br>
-    {% for u in access_urls %}<strong>{{ u }}</strong>{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
-  {% endif %}
+  <h2>Yedekleme</h2>
   <p class="small">Veri klasörü: <code>{{ data_path }}</code><br>
      Yedek klasörü: <code>{{ backup_path }}</code></p>
   <p class="small muted">Program açıkken her gün otomatik yedek alınır, son 30 yedek saklanır.
-     Yedekleri düzenli olarak başka bir diske / ağ klasörüne kopyalamanız önerilir.</p>
+     Yedekleri düzenli olarak USB belleğe veya başka bir diske kopyalamanız önerilir.</p>
   {% if backups %}
   <table class="table compact">
     <tbody>

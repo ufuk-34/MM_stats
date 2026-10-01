@@ -529,17 +529,30 @@ def test_initial_setup_creates_admin(fresh_client):
     assert client.get("/kurulum").status_code == 302
 
 
-def test_initial_setup_only_from_local_computer(fresh_client):
-    app, client = fresh_client
-    r = client.get("/kurulum", environ_base={"REMOTE_ADDR": "192.168.1.50"})
-    assert r.status_code == 403
-    client.get("/kurulum")
-    r = client.post("/kurulum", environ_base={"REMOTE_ADDR": "192.168.1.50"},
-                    data={"csrf_token": csrf(client), "full_name": "X", "username": "x",
-                          "password": "Kurulum.123", "password2": "Kurulum.123"})
-    assert r.status_code == 403
+def test_remote_computers_are_rejected(fresh_client, client):
+    """Program yalnızca kurulu olduğu bilgisayardan kullanılır; ağdan gelen istekler reddedilir."""
+    app, fresh = fresh_client
+    assert fresh.get("/kurulum", environ_base={"REMOTE_ADDR": "192.168.1.50"}).status_code == 403
+    assert fresh.post("/kurulum", environ_base={"REMOTE_ADDR": "192.168.1.50"},
+                      data={"full_name": "X", "username": "x", "password": "Kurulum.123",
+                            "password2": "Kurulum.123"}).status_code == 403
     with app.app_context():
         assert db.session.execute(db.select(db.func.count(User.id))).scalar() == 0
+    # Kurulu programda da giriş dahil hiçbir sayfa ağdan açılamaz
+    for url in ("/login", "/", "/tickets/", "/static/css/app.css"):
+        assert client.get(url, environ_base={"REMOTE_ADDR": "10.0.0.7"}).status_code == 403, url
+    assert client.get("/login", environ_base={"REMOTE_ADDR": "::1"}).status_code == 200
+
+
+def test_idle_session_is_logged_out(client, app):
+    login(client, "personel1")
+    assert client.get("/").status_code == 200
+    assert client.get("/oturum").status_code == 204          # aktif kullanımda oturum açık kalır
+    with client.session_transaction() as s:
+        s["last_seen"] -= app.config["IDLE_TIMEOUT_MINUTES"] * 60 + 1
+    r = client.get("/tickets/")
+    assert r.status_code == 302 and "/login" in r.headers["Location"]
+    assert client.get("/tickets/").status_code == 302          # oturum gerçekten kapandı
 
 
 def test_backup(app, client):

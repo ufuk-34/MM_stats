@@ -1,7 +1,8 @@
 """Teknik Destek Kayıt Programı - başlatıcı.
 
-Windows'ta DestekKayit.exe bu dosyadan üretilir. Program bir bilgisayarda çalışır;
-o bilgisayardan ve aynı ağdaki diğer bilgisayarlardan tarayıcı ile kullanılır.
+Windows'ta DestekKayit.exe bu dosyadan üretilir. Program tek bir bilgisayarda çalışır ve
+yalnızca o bilgisayardan kullanılır: sunucu sadece 127.0.0.1 (localhost) adresini dinler,
+ağdaki diğer bilgisayarlar bağlanamaz. İnternet bağlantısı gerekmez.
 
     python run.py                      Programı başlatır ve tarayıcıyı açar
     python run.py --no-browser         Tarayıcı açmadan başlatır (otomatik başlatma için)
@@ -19,24 +20,6 @@ import sys
 import threading
 import time
 import webbrowser
-
-
-def local_ips():
-    """Bu bilgisayarın ağ (IPv4) adresleri."""
-    ips = set()
-    try:
-        # Hiçbir veri göndermez; yalnızca varsayılan ağ arayüzünü öğrenmek içindir
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))
-            ips.add(s.getsockname()[0])
-    except OSError:
-        pass
-    try:
-        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
-            ips.add(ip)
-    except OSError:
-        pass
-    return sorted(ip for ip in ips if not ip.startswith("127."))
 
 
 def port_in_use(port):
@@ -86,13 +69,13 @@ def main():
         sys.stdout.reconfigure(line_buffering=True)
     parser = argparse.ArgumentParser(description="Teknik Destek Kayıt Programı")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
-    parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
     parser.add_argument("--no-browser", action="store_true", help="Tarayıcıyı otomatik açma")
     parser.add_argument("--yonetici-sifirla", action="store_true", help="Yönetici şifresini sıfırla")
     parser.add_argument("--debug", action="store_true", help="Flask geliştirme sunucusu")
     args = parser.parse_args()
 
-    local_url = f"http://localhost:{args.port}"
+    host = "127.0.0.1"   # yalnızca bu bilgisayar
+    local_url = f"http://127.0.0.1:{args.port}"
 
     if not args.yonetici_sifirla and port_in_use(args.port):
         print(f"Program zaten çalışıyor. Tarayıcıda açılıyor: {local_url}")
@@ -108,11 +91,8 @@ def main():
         reset_admin(app)
         return
 
-    lan_urls = [f"http://{ip}:{args.port}" for ip in local_ips()]
-    app.config["ACCESS_URLS"] = lan_urls
-
     if args.debug:
-        app.run(host=args.host, port=args.port, debug=True)
+        app.run(host=host, port=args.port, debug=True)
         return
 
     threading.Thread(target=backup_loop, args=(app,), daemon=True).start()
@@ -121,10 +101,8 @@ def main():
     print(line)
     print("  TEKNİK DESTEK KAYIT PROGRAMI ÇALIŞIYOR")
     print(line)
-    print(f"  Bu bilgisayardan      : {local_url}")
-    for url in lan_urls:
-        print(f"  Diğer bilgisayarlardan: {url}")
-    print(f"  Veri klasörü          : {app.instance_path}")
+    print(f"  Adres        : {local_url}  (yalnızca bu bilgisayardan)")
+    print(f"  Veri klasörü : {app.instance_path}")
     print(line)
     print("  Bu pencereyi KAPATMAYIN. Kapatırsanız program durur.")
     print("  (Pencereyi simge durumuna küçültebilirsiniz.)")
@@ -134,7 +112,7 @@ def main():
         threading.Timer(1.5, webbrowser.open, args=(local_url,)).start()
 
     from waitress import serve
-    serve(app, host=args.host, port=args.port, threads=8)
+    serve(app, host=host, port=args.port, threads=8)
 
 
 if __name__ == "__main__":

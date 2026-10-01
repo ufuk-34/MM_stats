@@ -217,5 +217,5 @@ def settings():
     return render_template(
         "admin/settings.html", demo_tickets=demo_tickets, demo_users=demo_users,
         backups=list_backups(current_app)[:5], backup_path=backup_dir(current_app),
-        data_path=current_app.instance_path, access_urls=current_app.config.get("ACCESS_URLS", []),
+        data_path=current_app.instance_path,
     )
