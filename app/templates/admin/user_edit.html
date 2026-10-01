@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Yönetim · {{ user.full_name }}{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<form method="post" class="card form-narrow" autocomplete="off">
+  <h2>{{ user.full_name }} <span class="muted">({{ user.username }})</span></h2>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Ad Soyad<input type="text" name="full_name" value="{{ user.full_name }}" maxlength="100" required></label>
+  <label>Rol
+    <select name="role">
+      {% for k, v in ROLES.items() %}<option value="{{ k }}" {{ 'selected' if user.role == k }}>{{ v }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Durum
+    <select name="active">
+      <option value="1" {{ 'selected' if user.active }}>Aktif</option>
+      <option value="0" {{ 'selected' if not user.active }}>Pasif (giriş yapamaz)</option>
+    </select>
+  </label>
+  <fieldset>
+    <legend>Şifre sıfırla <span class="muted">(boş bırakılırsa değişmez)</span></legend>
+    <label>Yeni şifre<input type="password" name="password" minlength="8" autocomplete="new-password"></label>
+    <label>Yeni şifre (tekrar)<input type="password" name="password2" minlength="8" autocomplete="new-password"></label>
+  </fieldset>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-light" href="{{ url_for('admin.users') }}">Vazgeç</a>
+  </div>
+</form>
+{% endblock %}

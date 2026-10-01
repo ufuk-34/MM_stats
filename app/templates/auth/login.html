@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Giriş{% endblock %}
+{% block public %}
+<div class="login-wrap">
+  <form method="post" class="card login-card" autocomplete="on">
+    <div class="login-brand"><span class="brand-mark">TD</span></div>
+    <h1>{{ org_name }}</h1>
+    <p class="muted">Teknik Destek Kayıt ve İstatistik Programı</p>
+    {% include "_flash.html" %}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Kullanıcı adı
+      <input type="text" name="username" value="{{ username }}" required autofocus autocomplete="username">
+    </label>
+    <label>Şifre
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+    <button type="submit" class="btn btn-primary btn-block">Giriş yap</button>
+  </form>
+</div>
+{% endblock %}

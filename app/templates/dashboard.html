@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, source_badge with context %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="muted">
+      {% if date_from == date_to %}{{ date_from.strftime('%d.%m.%Y') }}{% else %}{{ date_from.strftime('%d.%m.%Y') }} – {{ date_to.strftime('%d.%m.%Y') }}{% endif %}
+      {% if not current_user.is_admin %} · Yalnızca sizin kayıtlarınız{% endif %}
+    </p>
+  </div>
+  <div class="segmented">
+    {% for key, label in periods.items() %}
+    <a href="{{ url_for('dashboard.index', period=key) }}" class="{{ 'active' if period == key }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<section class="kpis">
+  <a class="kpi" href="{{ url_for('tickets.index', **filter_args) }}">
+    <div class="kpi-label">{{ periods[period] }} Toplam Kayıt</div>
+    <div class="kpi-value">{{ stats.total }}</div>
+  </a>
+  <a class="kpi" href="{{ url_for('tickets.index', status='done', **filter_args) }}">
+    <div class="kpi-label">Çözülen</div>
+    <div class="kpi-value">{{ stats.done }}</div>
+  </a>
+  <a class="kpi" href="{{ url_for('tickets.index', status='pending') }}">
+    <div class="kpi-label">Açık / Bekleyen</div>
+    <div class="kpi-value">{{ stats.pending }}</div>
+    <div class="kpi-sub">Toplam bekleyen (tüm tarihler): <strong>{{ backlog }}</strong></div>
+  </a>
+  <a class="kpi" href="{{ url_for('tickets.index', source='system', **filter_args) }}">
+    <div class="kpi-label"><span class="dot dot-system"></span>Sistem Kaynaklı</div>
+    <div class="kpi-value">{{ stats.system }}</div>
+    <div class="kpi-sub">%{{ stats.system_pct|num(1) }}</div>
+  </a>
+  <a class="kpi" href="{{ url_for('tickets.index', source='user', **filter_args) }}">
+    <div class="kpi-label"><span class="dot dot-user"></span>Kullanıcı İşlemi Kaynaklı</div>
+    <div class="kpi-value">{{ stats.user }}</div>
+    <div class="kpi-sub">%{{ stats.user_pct|num(1) }}</div>
+  </a>
+  <div class="kpi">
+    <div class="kpi-label">Ortalama İşlem Süresi</div>
+    <div class="kpi-value">{{ stats.avg_duration|minutes if stats.avg_duration is not none else '-' }}</div>
+    <div class="kpi-sub">Toplam: {{ stats.total_duration|minutes }}</div>
+  </div>
+</section>
+
+<section class="grid-3">
+  <div class="card">
+    <h2>Proje Dağılımı</h2>
+    {% set top_p = projects|map(attribute='count')|max if projects else 0 %}
+    <ul class="bar-list">
+      {% for p in projects %}
+      <li>
+        <div class="bar-head"><span>{{ p.name }}</span><span class="num"><strong>{{ p.count }}</strong> <span class="muted">· %{{ p.pct|num(1) }}</span></span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: {{ (p.count * 100 / top_p)|round(1) if top_p else 0 }}%"></div></div>
+      </li>
+      {% else %}<li class="empty">Aktif proje yok.</li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="card">
+    <h2>Sorun Kaynağı Dağılımı</h2>
+    <div class="chart-box chart-sm"><canvas id="chart-source" aria-label="Sorun kaynağı dağılımı"></canvas></div>
+    <table class="table compact">
+      <tbody>
+        <tr><td><span class="dot dot-system"></span>Sistem Kaynaklı</td><td class="num">{{ stats.system }}</td><td class="num muted">%{{ stats.system_pct|num(1) }}</td></tr>
+        <tr><td><span class="dot dot-user"></span>Kullanıcı İşlemi Kaynaklı</td><td class="num">{{ stats.user }}</td><td class="num muted">%{{ stats.user_pct|num(1) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>En Sık Sorun Kategorileri</h2>
+    {% if categories %}
+    <ul class="bar-list">
+      {% set top = categories[0].count %}
+      {% for c in categories %}
+      <li>
+        <div class="bar-head"><span>{{ c.name }}</span><span class="num">{{ c.count }}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: {{ (c.count * 100 / top)|round(1) }}%"></div></div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">Bu dönemde kayıt yok.</p>{% endif %}
+    <div class="month-compare">
+      <div class="mc-title">Bu ay / geçen ay</div>
+      <div class="mc-row">
+        <span>{{ month.label }}: <strong>{{ month.current }}</strong></span>
+        <span>{{ month.prev_label }}: <strong>{{ month.prev_same }}</strong></span>
+      </div>
+      <div class="mc-row muted">
+        <span>
+          {% if month.change is none %}Karşılaştırma için geçen ay verisi yok.
+          {% elif month.change > 0 %}<span class="trend-up">▲ %{{ month.change|num(1) }} artış</span>
+          {% elif month.change < 0 %}<span class="trend-down">▼ %{{ (-month.change)|num(1) }} azalış</span>
+          {% else %}Değişim yok{% endif %}
+        </span>
+        <span>{{ month.prev_name }} toplamı: {{ month.prev_full }}</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if workload is not none %}
+<section class="card">
+  <h2>Personel İş Yükü <span class="muted small">({{ periods[period]|lower }})</span></h2>
+  <table class="table">
+    <thead><tr><th>Personel</th><th class="num">Toplam Kayıt</th><th class="num">Çözülen</th><th class="num">Bekleyen</th><th class="num">Toplam İşlem Süresi</th></tr></thead>
+    <tbody>
+    {% for u in workload %}
+      <tr>
+        <td>{{ u.name }}{% if not u.active %} <span class="muted small">(pasif)</span>{% endif %}</td>
+        <td class="num">{{ u.total }}</td><td class="num">{{ u.done }}</td><td class="num">{{ u.pending }}</td>
+        <td class="num">{{ u.duration|minutes }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">Personel bulunamadı.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="card-head">
+    <h2>Son Kayıtlar</h2>
+    <a href="{{ url_for('tickets.index') }}">Tüm kayıtlar →</a>
+  </div>
+  <table class="table clickable">
+    <thead><tr><th>Kayıt No</th><th>Tarih</th><th>Proje</th><th>Talep Sahibi</th><th>Sorun Kaynağı</th><th>Kategori</th>{% if current_user.is_admin %}<th>Personel</th>{% endif %}<th>Durum</th></tr></thead>
+    <tbody>
+    {% for t in recent %}
+      <tr data-href="{{ url_for('tickets.detail', ticket_id=t.id) }}">
+        <td class="nowrap"><a href="{{ url_for('tickets.detail', ticket_id=t.id) }}">{{ t.ticket_no }}</a></td>
+        <td class="nowrap">{{ t.created_at|datetime_tr }}</td>
+        <td>{{ t.project.name }}</td>
+        <td>{{ t.requester_name }}</td>
+        <td>{{ source_badge(t.source, t.source_label) }}</td>
+        <td>{{ t.category.name }}</td>
+        {% if current_user.is_admin %}<td>{{ t.created_by.full_name }}</td>{% endif %}
+        <td>{{ status_badge(t.status, t.status_label) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">Henüz kayıt yok. <a href="{{ url_for('tickets.new') }}">İlk kaydı oluşturun.</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+<script type="application/json" id="chart-data">{{ chart_data|tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% endblock %}

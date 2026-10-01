@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, source_badge, priority_badge, pagination_nav, ticket_filters with context %}
+{% block title %}Kayıtlar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Kayıtlar{% if filters.archived %} <span class="muted">· Arşiv</span>{% endif %}</h1>
+    <p class="muted">{{ pagination.total }} kayıt{% if not current_user.is_admin %} · Yalnızca sizin oluşturduğunuz kayıtlar{% endif %}</p>
+  </div>
+  <div class="head-actions">
+    {% if current_user.is_admin %}
+    <a class="btn btn-secondary" href="{{ url_for('reports.export', **filters.to_args()) }}">Excel'e Aktar</a>
+    {% endif %}
+    <a class="btn btn-primary" href="{{ url_for('tickets.new') }}">+ Yeni Kayıt</a>
+  </div>
+</div>
+
+{{ ticket_filters(filters, url_for('tickets.index'), projects, categories, users, status_groups, show_search=True, show_archived=current_user.is_admin) }}
+
+<div class="card table-card">
+  <table class="table clickable">
+    <thead>
+      <tr>
+        <th>Kayıt No</th><th>Tarih</th><th>Saat</th><th>Proje</th><th>Talep Sahibi</th>
+        <th>Sorun Kaynağı</th><th>Sorun Kategorisi</th><th>Personel</th><th class="num">İşlem Süresi</th><th>Durum</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for t in pagination.items %}
+      <tr data-href="{{ url_for('tickets.detail', ticket_id=t.id) }}">
+        <td class="nowrap"><a href="{{ url_for('tickets.detail', ticket_id=t.id) }}">{{ t.ticket_no }}</a> {{ priority_badge(t.priority, t.priority_label) }}</td>
+        <td class="nowrap">{{ t.created_at|date_tr }}</td>
+        <td>{{ t.created_at|time_tr }}</td>
+        <td>{{ t.project.name }}</td>
+        <td class="nowrap">{{ t.requester_name }}</td>
+        <td>{{ source_badge(t.source, t.source_label) }}</td>
+        <td>{{ t.category.name }}</td>
+        <td class="nowrap">{{ t.created_by.full_name }}</td>
+        <td class="num nowrap">{{ t.duration_minutes|minutes }}</td>
+        <td>{{ status_badge(t.status, t.status_label) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="empty">Filtrelere uyan kayıt bulunamadı.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pagination_nav(pagination, 'tickets.index', filters.to_args()) }}
+{% endblock %}

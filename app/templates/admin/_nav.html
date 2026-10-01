@@ -1,0 +1,8 @@
+<div class="page-head"><h1>Yönetim</h1></div>
+{% set ep = request.endpoint %}
+<nav class="tabs">
+  <a href="{{ url_for('admin.named_list', kind='projects') }}" class="{{ 'active' if kind == 'projects' }}">Projeler</a>
+  <a href="{{ url_for('admin.named_list', kind='categories') }}" class="{{ 'active' if kind == 'categories' }}">Sorun Kategorileri</a>
+  <a href="{{ url_for('admin.users') }}" class="{{ 'active' if ep in ('admin.users', 'admin.user_edit') }}">Personel</a>
+  <a href="{{ url_for('admin.settings') }}" class="{{ 'active' if ep == 'admin.settings' }}">Sistem Ayarları</a>
+</nav>

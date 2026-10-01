@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, source_badge with context %}
+{% block title %}{{ ticket.ticket_no }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Kayıt No: {{ ticket.ticket_no }} {{ status_badge(ticket.status, ticket.status_label) }}
+      {% if ticket.archived %}<span class="badge badge-archived">Arşivlendi</span>{% endif %}</h1>
+    <p class="muted">{{ ticket.created_at|date_tr }} {{ ticket.created_at|time_tr }} · {{ ticket.created_by.full_name }}</p>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-light" href="{{ url_for('tickets.index') }}">← Kayıtlar</a>
+    {% if not ticket.archived %}
+    <a class="btn btn-primary" href="{{ url_for('tickets.edit', ticket_id=ticket.id) }}">Düzenle</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="card">
+    <dl class="detail-list">
+      <dt>Proje</dt><dd>{{ ticket.project.name }}</dd>
+      <dt>Talep sahibi</dt><dd>{{ ticket.requester_name }}</dd>
+      <dt>Telefon</dt><dd>{{ ticket.requester_phone or '-' }}</dd>
+      <dt>İletişim kanalı</dt><dd>{{ ticket.channel_label }}</dd>
+      <dt>Sorun kaynağı</dt><dd>{{ source_badge(ticket.source, ticket.source_label) }}</dd>
+      <dt>Kategori</dt><dd>{{ ticket.category.name }}</dd>
+      <dt>Öncelik</dt><dd>{{ ticket.priority_label }}</dd>
+      <dt>Açıklama</dt><dd class="pre">{{ ticket.description }}</dd>
+      <dt>İşlem</dt><dd class="pre">{{ ticket.resolution or '-' }}</dd>
+      <dt>İşlem süresi</dt><dd>{{ ticket.duration_minutes|minutes }}</dd>
+      <dt>Personel</dt><dd>{{ ticket.created_by.full_name }}</dd>
+      <dt>Durum</dt><dd>{{ ticket.status_label }}{% if ticket.resolved_at %} <span class="muted">({{ ticket.resolved_at|datetime_tr }})</span>{% endif %}</dd>
+      {% if ticket.updated_at %}
+      <dt>Son güncelleme</dt><dd>{{ ticket.updated_at|datetime_tr }} · {{ ticket.updated_by.full_name if ticket.updated_by else '-' }}</dd>
+      {% endif %}
+      {% if ticket.archived %}
+      <dt>Arşiv</dt><dd>{{ ticket.archived_at|datetime_tr }} · {{ ticket.archived_by.full_name if ticket.archived_by else '-' }}</dd>
+      {% endif %}
+    </dl>
+  </div>
+
+  <div class="side-col">
+    {% if not ticket.archived %}
+    <div class="card">
+      <h2>Durumu Değiştir</h2>
+      <form method="post" action="{{ url_for('tickets.change_status', ticket_id=ticket.id) }}" class="status-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if ticket.duration_minutes is none %}
+        <label class="field">
+          <span class="field-label">İşlem süresi (dk) <span class="muted">– çözüldü/kapatıldı için gerekli</span></span>
+          <input type="number" name="duration_minutes" min="1" max="{{ C.MAX_DURATION_MINUTES }}" inputmode="numeric">
+        </label>
+        {% endif %}
+        <div class="status-buttons">
+        {% if ticket.status in done_statuses %}
+          <button class="btn btn-secondary" name="status" value="open">Yeniden Aç</button>
+          {% if ticket.status == 'resolved' %}<button class="btn btn-light" name="status" value="closed">Kapat</button>{% endif %}
+        {% else %}
+          {% if ticket.status != 'in_review' %}<button class="btn btn-light" name="status" value="in_review">İnceleniyor</button>{% endif %}
+          {% if ticket.status != 'open' %}<button class="btn btn-light" name="status" value="open">Açık</button>{% endif %}
+          <button class="btn btn-primary" name="status" value="resolved">Çözüldü</button>
+          <button class="btn btn-light" name="status" value="closed">Kapat</button>
+        {% endif %}
+        </div>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if current_user.is_admin %}
+    <div class="card">
+      <h2>Arşiv</h2>
+      <form method="post" action="{{ url_for('tickets.archive', ticket_id=ticket.id) }}" data-confirm="{{ 'Kayıt arşivden çıkarılsın mı?' if ticket.archived else 'Kayıt arşivlensin mi? Arşivdeki kayıtlar istatistiklere dahil edilmez.' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if ticket.archived %}
+          <input type="hidden" name="restore" value="1">
+          <button class="btn btn-light">Arşivden Çıkar</button>
+        {% else %}
+          <p class="muted small">Kayıtlar silinmez. Hatalı / mükerrer kayıtlar arşivlenebilir.</p>
+          <button class="btn btn-danger-outline">Arşivle</button>
+        {% endif %}
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2>İşlem Geçmişi</h2>
+      <ul class="history">
+        {% for h in history %}
+        <li>
+          <div class="history-head"><strong>{{ h.action_label }}</strong> <span class="muted">{{ h.created_at|datetime_tr }} · {{ h.user.full_name if h.user else '-' }}</span></div>
+          {% for field, change in h.changes_dict.items() %}
+          <div class="history-change">{{ field }}: <span class="muted">{{ change[0] }}</span> → {{ change[1] }}</div>
+          {% endfor %}
+        </li>
+        {% else %}
+        <li class="muted">Kayıt yok.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

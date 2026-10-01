@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Yönetim · {{ label }}{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<div class="card">
+  <form method="post" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="grow">Yeni {{ label|lower }} adı<input type="text" name="name" maxlength="150" required></label>
+    <button class="btn btn-primary" type="submit">Ekle</button>
+  </form>
+</div>
+<div class="card">
+  <div class="row-form row-head"><span>Ad</span><span>Sıra</span><span>Durum</span><span class="num">Kayıt sayısı</span><span></span></div>
+  {% for item in items %}
+  <form method="post" action="{{ url_for('admin.named_update', kind=kind, item_id=item.id) }}" class="row-form {{ 'row-inactive' if not item.active }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="name" value="{{ item.name }}" maxlength="150" required aria-label="Ad">
+    <input type="number" name="sort_order" value="{{ item.sort_order }}" aria-label="Sıra">
+    <select name="active" aria-label="Durum">
+      <option value="1" {{ 'selected' if item.active }}>Aktif</option>
+      <option value="0" {{ 'selected' if not item.active }}>Pasif</option>
+    </select>
+    <span class="num">{{ usage.get(item.id, 0) }}</span>
+    <button class="btn btn-light btn-sm" type="submit">Kaydet</button>
+  </form>
+  {% endfor %}
+</div>
+<p class="muted small">Silme yoktur; kullanılmayacak {{ label|lower }} pasif yapılabilir. Pasif {{ label|lower }} yeni kayıtlarda seçilemez, eski kayıtlar ve istatistikler korunur.</p>
+{% endblock %}

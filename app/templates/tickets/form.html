@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field_error with context %}
+{% block title %}{{ 'Kayıt Düzenle' if ticket else 'Yeni Kayıt' }}{% endblock %}
+{% macro chips(name, options, current, required=False) -%}
+<div class="chips" role="radiogroup">
+  {% for value, label in options %}
+  <label class="chip"><input type="radio" name="{{ name }}" value="{{ value }}" {{ 'checked' if current == value|string }} {{ 'required' if required }}><span>{{ label }}</span></label>
+  {% endfor %}
+</div>
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ ('Kayıt Düzenle · ' ~ ticket.ticket_no) if ticket else 'Yeni Destek Kaydı' }}</h1>
+    <p class="muted">
+      Kayıt no: <strong>{{ ticket.ticket_no if ticket else 'kaydedildiğinde otomatik verilir' }}</strong> ·
+      Tarih: {{ now|date_tr }} · Saat: {{ now|time_tr }} ·
+      Personel: {{ ticket.created_by.full_name if ticket else current_user.full_name }}
+    </p>
+  </div>
+</div>
+
+<form method="post" class="card ticket-form" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="form-grid">
+    <div class="form-col">
+      <div class="field {{ 'has-error' if errors.project_id }}">
+        <span class="field-label">Proje *</span>
+        {% set project_options = [] %}
+        {% for p in projects %}{% set _ = project_options.append((p.id, p.name ~ (' (pasif)' if not p.active else ''))) %}{% endfor %}
+        {{ chips('project_id', project_options, values.get('project_id', ''), True) }}
+        {{ field_error(errors, 'project_id') }}
+      </div>
+
+      <div class="field-row">
+        <label class="field {{ 'has-error' if errors.requester_name }}">
+          <span class="field-label">Arayan / talep sahibi *</span>
+          <input type="text" name="requester_name" value="{{ values.get('requester_name', '') }}" maxlength="100" required {{ 'autofocus' if not ticket }}>
+          {{ field_error(errors, 'requester_name') }}
+        </label>
+        <label class="field {{ 'has-error' if errors.requester_phone }}">
+          <span class="field-label">Telefon <span class="muted">(isteğe bağlı)</span></span>
+          <input type="tel" name="requester_phone" value="{{ values.get('requester_phone', '') }}" maxlength="20" placeholder="0xxx xxx xx xx">
+          {{ field_error(errors, 'requester_phone') }}
+        </label>
+      </div>
+
+      <div class="field {{ 'has-error' if errors.channel }}">
+        <span class="field-label">İletişim kanalı *</span>
+        {{ chips('channel', CHANNELS.items(), values.get('channel', ''), True) }}
+        {{ field_error(errors, 'channel') }}
+      </div>
+
+      <div class="field {{ 'has-error' if errors.priority }}">
+        <span class="field-label">Öncelik *</span>
+        {{ chips('priority', PRIORITIES.items(), values.get('priority', ''), True) }}
+        {{ field_error(errors, 'priority') }}
+      </div>
+    </div>
+
+    <div class="form-col">
+      <div class="field {{ 'has-error' if errors.source }}">
+        <span class="field-label">Sorun kaynağı * <span class="muted">(kurum içi istatistik sınıflandırması)</span></span>
+        <div class="source-options">
+          {% for key, label in SOURCES.items() %}
+          <label class="source-card source-card-{{ key }}">
+            <input type="radio" name="source" value="{{ key }}" {{ 'checked' if values.get('source') == key }} required>
+            <span class="source-title">{{ label }}</span>
+            <span class="source-hint">{{ source_hints[key] }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {{ field_error(errors, 'source') }}
+      </div>
+
+      <label class="field {{ 'has-error' if errors.category_id }}">
+        <span class="field-label">Sorun kategorisi *</span>
+        <select name="category_id" required>
+          <option value="">Seçiniz…</option>
+          {% for c in categories %}
+          <option value="{{ c.id }}" {{ 'selected' if values.get('category_id') == c.id|string }}>{{ c.name }}{{ ' (pasif)' if not c.active }}</option>
+          {% endfor %}
+        </select>
+        {{ field_error(errors, 'category_id') }}
+      </label>
+
+      <label class="field {{ 'has-error' if errors.description }}">
+        <span class="field-label">Sorunun açıklaması *</span>
+        <textarea name="description" rows="4" maxlength="4000" required>{{ values.get('description', '') }}</textarea>
+        {{ field_error(errors, 'description') }}
+      </label>
+    </div>
+  </div>
+
+  <div class="form-grid form-bottom">
+    <label class="field">
+      <span class="field-label">Yapılan işlem / çözüm</span>
+      <textarea name="resolution" rows="3" maxlength="4000">{{ values.get('resolution', '') }}</textarea>
+    </label>
+    <div>
+      <div class="field {{ 'has-error' if errors.duration_minutes }}">
+        <span class="field-label">İşlem süresi (dakika)</span>
+        <div class="duration-row">
+          <input type="number" name="duration_minutes" id="duration" min="1" max="{{ C.MAX_DURATION_MINUTES }}" step="1" value="{{ values.get('duration_minutes', '') }}" inputmode="numeric">
+          {% for m in quick_durations %}
+          <button type="button" class="btn btn-light btn-sm" data-duration="{{ m }}">{{ m }} dk</button>
+          {% endfor %}
+        </div>
+        <div class="hint">Çözüldü / Kapatıldı durumundaki kayıtlarda zorunludur.</div>
+        {{ field_error(errors, 'duration_minutes') }}
+      </div>
+      <div class="field {{ 'has-error' if errors.status }}">
+        <span class="field-label">Kayıt durumu *</span>
+        {{ chips('status', STATUSES.items(), values.get('status', ''), True) }}
+        {{ field_error(errors, 'status') }}
+      </div>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    {% if ticket %}
+      <button type="submit" class="btn btn-primary">Değişiklikleri Kaydet</button>
+      <a href="{{ url_for('tickets.detail', ticket_id=ticket.id) }}" class="btn btn-light">Vazgeç</a>
+    {% else %}
+      <button type="submit" class="btn btn-primary">Kaydet</button>
+      <button type="submit" name="save_and_new" value="1" class="btn btn-secondary">Kaydet ve Yeni Kayıt</button>
+      <a href="{{ url_for('dashboard.index') }}" class="btn btn-light">Vazgeç</a>
+    {% endif %}
+  </div>
+  <p class="muted small kvkk-note">KVKK: Talep sahibi için yalnızca ad ve gerekiyorsa telefon bilgisi alınır. Açıklama alanına T.C. kimlik no, adres gibi gereksiz kişisel veri yazmayınız.</p>
+</form>
+{% endblock %}

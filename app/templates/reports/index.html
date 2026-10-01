@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ticket_filters with context %}
+{% block title %}Raporlar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Raporlar</h1>
+    <p class="muted">Filtreleri seçip kayıtları Excel dosyasına aktarın. Dosyada "Kayıtlar" ve "Özet" sayfaları bulunur.</p>
+  </div>
+</div>
+
+{{ ticket_filters(filters, url_for('reports.index'), projects, categories, users, status_groups, show_search=True, show_archived=True) }}
+
+<div class="card report-card">
+  <div>
+    <div class="kpi-label">Filtrelere uyan kayıt</div>
+    <div class="kpi-value">{{ count }}</div>
+  </div>
+  <a class="btn btn-primary btn-lg" href="{{ url_for('reports.export', **filters.to_args()) }}">Excel'e Aktar</a>
+</div>
+<p class="muted small">Excel alanları: Kayıt No, Tarih, Saat, Proje, Talep Sahibi, Telefon, İletişim Kanalı, Sorun Kaynağı, Sorun Kategorisi, Öncelik, Açıklama, Personel, İşlem Süresi, Sonuç / Yapılan İşlem, Durum.</p>
+{% endblock %}

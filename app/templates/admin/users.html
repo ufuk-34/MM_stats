@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Yönetim · Personel{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<div class="card table-card">
+  <table class="table">
+    <thead><tr><th>Ad Soyad</th><th>Kullanıcı adı</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th></th></tr></thead>
+    <tbody>
+    {% for u in items %}
+      <tr class="{{ 'row-inactive' if not u.active }}">
+        <td>{{ u.full_name }}{% if u.is_demo %} <span class="badge badge-archived">demo</span>{% endif %}</td>
+        <td>{{ u.username }}</td>
+        <td>{{ u.role_label }}</td>
+        <td>{{ 'Aktif' if u.active else 'Pasif' }}</td>
+        <td>{{ u.last_login_at|datetime_tr or '-' }}</td>
+        <td class="num"><a class="btn btn-light btn-sm" href="{{ url_for('admin.user_edit', user_id=u.id) }}">Düzenle</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="card">
+  <h2>Yeni Kullanıcı</h2>
+  <form method="post" class="form-grid-4" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Ad Soyad<input type="text" name="full_name" value="{{ form.get('full_name', '') }}" maxlength="100" required></label>
+    <label>Kullanıcı adı<input type="text" name="username" value="{{ form.get('username', '') }}" maxlength="50" required></label>
+    <label>Rol
+      <select name="role">
+        {% for k, v in ROLES.items() %}<option value="{{ k }}" {{ 'selected' if form.get('role', 'staff') == k }}>{{ v }}</option>{% endfor %}
+      </select>
+    </label>
+    <span></span>
+    <label>Şifre (en az 8 karakter)<input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+    <label>Şifre (tekrar)<input type="password" name="password2" minlength="8" required autocomplete="new-password"></label>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Kullanıcı Ekle</button></div>
+  </form>
+  <p class="muted small">Kullanıcılar silinmez; ayrılan personel pasif yapılır. Geçmiş kayıtları ve istatistikleri korunur.</p>
+</div>
+{% endblock %}

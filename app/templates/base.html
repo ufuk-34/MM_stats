@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · {{ org_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="icon" href="data:,">
+</head>
+<body>
+{% if current_user.is_authenticated %}
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">TD</span>
+      <span class="brand-text">{{ org_name }}</span>
+    </div>
+    {% set ep = request.endpoint or '' %}
+    <nav class="menu">
+      <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if ep.startswith('dashboard.') }}">Dashboard</a>
+      <a href="{{ url_for('tickets.new') }}" class="menu-primary {{ 'active' if ep == 'tickets.new' }}">+ Yeni Kayıt</a>
+      <a href="{{ url_for('tickets.index') }}" class="{{ 'active' if ep.startswith('tickets.') and ep != 'tickets.new' }}">Kayıtlar</a>
+      <a href="{{ url_for('stats.index') }}" class="{{ 'active' if ep.startswith('stats.') }}">İstatistikler</a>
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('reports.index') }}" class="{{ 'active' if ep.startswith('reports.') }}">Raporlar</a>
+      <a href="{{ url_for('admin.index') }}" class="{{ 'active' if ep.startswith('admin.') }}">Yönetim</a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-name">{{ current_user.full_name }}</div>
+      <div class="user-role">{{ current_user.role_label }}</div>
+      <a href="{{ url_for('auth.change_password') }}">Şifre değiştir</a>
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="link-button">Çıkış yap</button>
+      </form>
+    </div>
+  </aside>
+  <main class="content">
+    {% include "_flash.html" %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% else %}
+  {% block public %}{% endblock %}
+{% endif %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

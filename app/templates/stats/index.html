@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}İstatistikler{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>İstatistikler</h1>
+    <p class="muted">{{ date_from|date_tr }}{% if date_to != date_from %} – {{ date_to|date_tr }}{% endif %}
+      {% if not current_user.is_admin %} · Yalnızca sizin kayıtlarınız{% endif %} · Arşivlenmiş kayıtlar dahil edilmez</p>
+  </div>
+</div>
+
+<form method="get" class="filter-bar">
+  <div class="segmented">
+    {% for key, label in periods.items() %}
+    <label class="seg-item {{ 'active' if period == key }}"><input type="radio" name="period" value="{{ key }}" {{ 'checked' if period == key }} data-autosubmit>{{ label }}</label>
+    {% endfor %}
+  </div>
+  {% if nav %}
+  <div class="period-nav">
+    <a class="btn btn-light btn-sm" href="{{ url_for('stats.index', period=period, ref=nav.prev, **nav_args) }}" title="Önceki dönem">‹</a>
+    <a class="btn btn-light btn-sm" href="{{ url_for('stats.index', period=period, **nav_args) }}">Bugün</a>
+    <a class="btn btn-light btn-sm" href="{{ url_for('stats.index', period=period, ref=nav.next, **nav_args) }}" title="Sonraki dönem">›</a>
+  </div>
+  {% else %}
+  <label>Başlangıç<input type="date" name="date_from" value="{{ date_from.isoformat() }}"></label>
+  <label>Bitiş<input type="date" name="date_to" value="{{ date_to.isoformat() }}"></label>
+  {% endif %}
+  <label>Proje
+    <select name="project_id"><option value="">Tümü</option>
+      {% for p in all_projects %}<option value="{{ p.id }}" {{ 'selected' if filters.project_id == p.id }}>{{ p.name }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if current_user.is_admin %}
+  <label>Personel
+    <select name="user_id"><option value="">Tümü</option>
+      {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if filters.user_id == u.id }}>{{ u.full_name }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <label>Sorun kaynağı
+    <select name="source"><option value="">Tümü</option>
+      {% for k, v in SOURCES.items() %}<option value="{{ k }}" {{ 'selected' if filters.source == k }}>{{ v }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Kategori
+    <select name="category_id"><option value="">Tümü</option>
+      {% for c in all_categories %}<option value="{{ c.id }}" {{ 'selected' if filters.category_id == c.id }}>{{ c.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Durum
+    <select name="status"><option value="">Tümü</option>
+      {% for k, v in status_groups.items() %}<option value="{{ k }}" {{ 'selected' if filters.status == k }}>{{ v[0] }}</option>{% endfor %}
+      {% for k, v in STATUSES.items() %}<option value="{{ k }}" {{ 'selected' if filters.status == k }}>{{ v }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if nav %}<input type="hidden" name="ref" value="{{ request.args.get('ref', '') }}">{% endif %}
+  <div class="filter-actions">
+    <button type="submit" class="btn btn-primary">Uygula</button>
+    <a href="{{ url_for('stats.index', period=period) }}" class="btn btn-light">Temizle</a>
+    <a href="{{ url_for('tickets.index', **list_args) }}" class="btn btn-light">Kayıtları gör</a>
+  </div>
+</form>
+
+<section class="kpis kpis-7">
+  <div class="kpi"><div class="kpi-label">Toplam Destek Kaydı</div><div class="kpi-value">{{ stats.total }}</div>
+    <div class="kpi-sub">Önceki dönem ({{ prev.from|date_tr }}{% if prev.to != prev.from %}–{{ prev.to|date_tr }}{% endif %}): {{ prev.total }}
+      {% if prev.change is not none %}
+        {% if prev.change > 0 %}<span class="trend-up">▲ %{{ prev.change|num(1) }}</span>{% elif prev.change < 0 %}<span class="trend-down">▼ %{{ (-prev.change)|num(1) }}</span>{% else %}(değişim yok){% endif %}
+      {% endif %}</div>
+  </div>
+  <div class="kpi"><div class="kpi-label"><span class="dot dot-system"></span>Sistem Kaynaklı</div><div class="kpi-value">{{ stats.system }}</div><div class="kpi-sub">%{{ stats.system_pct|num(1) }}</div></div>
+  <div class="kpi"><div class="kpi-label"><span class="dot dot-user"></span>Kullanıcı İşlemi Kaynaklı</div><div class="kpi-value">{{ stats.user }}</div><div class="kpi-sub">%{{ stats.user_pct|num(1) }}</div></div>
+  <div class="kpi"><div class="kpi-label">Çözülen</div><div class="kpi-value">{{ stats.done }}</div></div>
+  <div class="kpi"><div class="kpi-label">Bekleyen</div><div class="kpi-value">{{ stats.pending }}</div></div>
+  <div class="kpi"><div class="kpi-label">Ortalama İşlem Süresi</div><div class="kpi-value">{{ stats.avg_duration|minutes if stats.avg_duration is not none else '-' }}</div></div>
+  <div class="kpi"><div class="kpi-label">Toplam İşlem Süresi</div><div class="kpi-value">{{ stats.total_duration|minutes }}</div></div>
+</section>
+
+<section class="grid-2">
+  <div class="card">
+    <h2>Projelere Göre Destek Kayıtları</h2>
+    <div class="chart-box"><canvas id="chart-projects" aria-label="Projelere göre destek kayıtları"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Sistem Kaynaklı / Kullanıcı İşlemi Kaynaklı</h2>
+    <div class="chart-box"><canvas id="chart-source" aria-label="Sorun kaynağı dağılımı"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Günlere Göre Destek Kayıtları</h2>
+    <div class="chart-box"><canvas id="chart-days" aria-label="Günlere göre destek kayıtları"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Sorun Kategorilerine Göre Dağılım</h2>
+    <div class="chart-box"><canvas id="chart-categories" aria-label="Sorun kategorilerine göre dağılım"></canvas></div>
+  </div>
+</section>
+
+<section class="grid-2">
+  <div class="card">
+    <h2>Proje Bazlı Kayıt Sayısı</h2>
+    <table class="table">
+      <thead><tr><th>Proje</th><th class="num">Kayıt</th><th class="num">%</th></tr></thead>
+      <tbody>
+      {% for p in projects %}
+        <tr><td>{{ p.name }}{% if not p.active %} <span class="muted small">(pasif)</span>{% endif %}</td><td class="num">{{ p.count }}</td><td class="num">%{{ p.pct|num(1) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Sorun Kategorisi Dağılımı</h2>
+    <table class="table">
+      <thead><tr><th>Kategori</th><th class="num">Sistem</th><th class="num">Kullanıcı İşl.</th><th class="num">Toplam</th><th class="num">%</th></tr></thead>
+      <tbody>
+      {% for c in categories %}
+        <tr><td>{{ c.name }}</td><td class="num">{{ c.system }}</td><td class="num">{{ c.user }}</td><td class="num"><strong>{{ c.count }}</strong></td><td class="num">%{{ c.pct|num(1) }}</td></tr>
+      {% else %}
+        <tr><td colspan="5" class="empty">Bu dönemde kayıt yok.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if workload is not none %}
+<section class="card">
+  <h2>Personel İstatistikleri</h2>
+  <p class="muted small">Amaç iş yükü ve destek yoğunluğunu görmektir; puanlama amacı taşımaz.</p>
+  <table class="table">
+    <thead><tr><th>Personel</th><th class="num">Kayıt</th><th class="num">Çözülen</th><th class="num">Bekleyen</th><th class="num">Toplam Süre</th><th class="num">Ort. Süre</th></tr></thead>
+    <tbody>
+    {% for u in workload %}
+      <tr><td>{{ u.name }}{% if not u.active %} <span class="muted small">(pasif)</span>{% endif %}</td>
+        <td class="num">{{ u.total }}</td><td class="num">{{ u.done }}</td><td class="num">{{ u.pending }}</td>
+        <td class="num">{{ u.duration|minutes }}</td><td class="num">{{ u.avg_duration|minutes }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+<script type="application/json" id="chart-data">{{ chart_data|tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Yönetim · Sistem Ayarları{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<form method="post" class="card form-narrow">
+  <h2>Genel</h2>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="save">
+  <label>Kurum / uygulama adı (menüde ve giriş ekranında görünür)
+    <input type="text" name="org_name" value="{{ org_name }}" maxlength="100" required>
+  </label>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Kaydet</button></div>
+</form>
+
+<form method="post" class="card form-narrow" data-confirm="Tüm demo kayıtlar ve demo personeller kalıcı olarak silinecek. Devam edilsin mi?">
+  <h2>Demo / Test Verileri</h2>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="clear_demo">
+  <p>Sistemde <strong>{{ demo_tickets }}</strong> demo kayıt ve <strong>{{ demo_users }}</strong> demo personel bulunuyor.
+     Bunlar yalnızca test amaçlıdır; temizlendiğinde gerçek kayıtlara dokunulmaz.</p>
+  {% if demo_tickets or demo_users %}
+  <label class="f-check"><input type="checkbox" name="confirm" value="1"> Demo verilerin silineceğini onaylıyorum</label>
+  <div class="form-actions"><button class="btn btn-danger-outline" type="submit">Demo Verileri Temizle</button></div>
+  {% else %}
+  <p class="muted small">Demo veri yüklemek için: <code>flask --app app seed-demo</code></p>
+  {% endif %}
+</form>
+{% endblock %}
