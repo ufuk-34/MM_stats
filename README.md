@@ -15,17 +15,35 @@ personel tarafından **manuel** kaydedildiği ve istatistiklerinin tutulduğu k�
 | Excel | openpyxl | .xlsx çıktısı |
 | Sunucu | waitress | Windows ve Linux'ta çalışan üretim WSGI sunucusu |
 
-## Kurulum ve çalıştırma
+## Windows'ta tek bilgisayara kurulum (önerilen)
+
+Program bir bilgisayara kurulur; o bilgisayardan ve aynı ağdaki diğer bilgisayarlardan
+tarayıcı ile (`http://BILGISAYAR-IP:8000`) kullanılır. Diğer bilgisayarlara bir şey kurulmaz.
+
+1. GitHub → **Actions** → "Windows Kurulum Dosyası" → son başarılı çalıştırma → **Artifacts** →
+   `DestekKayit-Windows` indirilir. İçinde `DestekKayit-Kurulum.exe` (kurulum sihirbazı) ve
+   `DestekKayit-Tasinabilir.zip` (kurulumsuz sürüm) bulunur.
+2. `DestekKayit-Kurulum.exe` çalıştırılır (C:\DestekKayit klasörüne kurar, masaüstü kısayolu,
+   güvenlik duvarı izni ve isteğe bağlı otomatik başlatma).
+3. Program ilk açıldığında tarayıcıda **İlk Kurulum** ekranı gelir; yönetici hesabı burada oluşturulur.
+
+Ayrıntılı, teknik olmayan kılavuz: [KURULUM.md](KURULUM.md)
+
+.exe, `.github/workflows/windows-build.yml` iş akışında Windows makinesinde
+PyInstaller (`packaging/DestekKayit.spec`) ve Inno Setup (`packaging/installer.iss`) ile üretilir;
+testler ve .exe duman testi geçmeden kurulum dosyası oluşmaz.
+
+## Kaynak koddan çalıştırma (geliştirme / Linux)
 
 ```bash
 # 1) Sanal ortam ve bağımlılıklar
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt          # Windows: .venv\Scripts\pip install -r requirements.txt
 
-# 2) Veritabanı (instance/destek.db) + başlangıç projeleri/kategorileri
+# 2) Veritabanı (veri/destek.db) + başlangıç projeleri/kategorileri
 .venv/bin/flask --app app init-db
 
-# 3) Varsayılan yönetici hesabı (şifre sorulur, en az 8 karakter)
+# 3) Yönetici hesabı: ilk açılıştaki "İlk Kurulum" ekranından veya komutla (şifre sorulur)
 .venv/bin/flask --app app create-admin
 #    veya etkileşimsiz:
 .venv/bin/flask --app app create-admin --username admin --full-name "Sistem Yöneticisi" --password "GucluSifre.123"
@@ -35,10 +53,11 @@ python -m venv .venv
 
 # 5) Uygulamayı başlat  ->  http://SUNUCU_IP:8000
 .venv/bin/python run.py                             # Windows: .venv\Scripts\python run.py
+#    Seçenekler: --port 8080, --no-browser, --yonetici-sifirla
 ```
 
-Ortam değişkenleri (isteğe bağlı): `PORT` (varsayılan 8000), `HOST` (0.0.0.0), `SECRET_KEY`
-(verilmezse `instance/secret_key` dosyasında bir kez üretilir), `DATABASE_URL`,
+Ortam değişkenleri (isteğe bağlı): `DESTEK_DATA_DIR` (veri klasörü; varsayılan programın yanındaki
+`veri/`), `PORT`, `HOST`, `SECRET_KEY` (verilmezse veri klasöründe bir kez üretilir), `DATABASE_URL`,
 `SESSION_COOKIE_SECURE=1` (HTTPS arkasında çalışılıyorsa).
 
 `create-admin` mevcut bir kullanıcı adıyla çalıştırılırsa o kullanıcıyı yönetici yapar ve şifresini sıfırlar
@@ -47,8 +66,9 @@ Ortam değişkenleri (isteğe bağlı): `PORT` (varsayılan 8000), `HOST` (0.0.0
 **Demo verileri temizlemek:** Yönetim → Sistem Ayarları → "Demo Verileri Temizle" veya
 `flask --app app clear-demo`. Yalnızca `is_demo` işaretli kayıt/personel silinir; gerçek kayıtlara dokunulmaz.
 
-**Yedekleme:** Tüm veri `instance/destek.db` dosyasındadır. Uygulama durdurulup bu dosyanın
-(varsa `-wal`/`-shm` dosyalarıyla birlikte) kopyalanması yeterlidir.
+**Yedekleme:** Tüm veri `veri/destek.db` dosyasındadır. Program açıkken günde bir kez
+`veri/yedekler/` klasörüne otomatik yedek alınır (son 30 yedek); Yönetim → Sistem Ayarları →
+"Şimdi Yedek Al" ile anında yedek alınabilir.
 
 ## Testler
 
@@ -56,7 +76,7 @@ Ortam değişkenleri (isteğe bağlı): `PORT` (varsayılan 8000), `HOST` (0.0.0
 .venv/bin/python -m pytest -q
 ```
 
-`tests/test_app.py` gereksinimlerdeki 12 senaryoyu ve ek iş kurallarını (durum değişikliği, yeniden açma,
+`tests/test_app.py` gereksinimlerdeki 12 senaryoyu ve ek iş kurallarını (ilk kurulum ekranı, yedekleme, durum değişikliği, yeniden açma,
 arşiv, işlem geçmişi, yönetim ekranları, demo temizleme, CSRF, giriş kilidi) kapsar.
 
 ## Modüller
@@ -74,6 +94,9 @@ arşiv, işlem geçmişi, yönetim ekranları, demo temizleme, CSRF, giriş kili
 | `app/reports.py` | Excel'e aktarma ("Kayıtlar" + "Özet" sayfaları) |
 | `app/admin.py` | Projeler, kategoriler, personel, sistem ayarları |
 | `app/demo.py`, `app/cli.py` | Demo veri ve komut satırı komutları |
+| `app/backup.py` | Günlük otomatik ve elle veritabanı yedeği |
+| `run.py` | Başlatıcı (.exe giriş noktası): sunucu, tarayıcı, ağ adresleri, yedek zamanlayıcı |
+| `packaging/` | PyInstaller tanımı ve Inno Setup kurulum betiği |
 
 ## Veritabanı
 

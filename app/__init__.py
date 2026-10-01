@@ -1,9 +1,10 @@
 """Kurum İçi Teknik Destek Kayıt ve İstatistik Programı - uygulama fabrikası."""
 import os
 import secrets
+import sys
 from datetime import timedelta
 
-from flask import Flask, abort, render_template, request, session
+from flask import Flask, abort, redirect, render_template, request, session, url_for
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
@@ -12,7 +13,7 @@ from .extensions import db, login_manager
 
 
 def _load_secret_key(instance_path):
-    """SECRET_KEY ortam değişkeninden okunur; yoksa instance klasöründe bir kez üretilir."""
+    """SECRET_KEY ortam değişkeninden okunur; yoksa veri klasöründe bir kez üretilir."""
     key = os.environ.get("SECRET_KEY")
     if key:
         return key
@@ -48,8 +49,22 @@ def tr_lower(value):
     return str(value).replace("I", "ı").replace("İ", "i").lower()
 
 
-def create_app(test_config=None):
-    app = Flask(__name__, instance_relative_config=True)
+def default_data_dir():
+    """Veri klasörü: veritabanı, gizli anahtar ve yedekler burada tutulur.
+
+    .exe olarak çalışırken programın yanındaki "veri" klasörü,
+    kaynak koddan çalışırken proje kökündeki "veri" klasörü kullanılır.
+    DESTEK_DATA_DIR ortam değişkeni ile değiştirilebilir.
+    """
+    if os.environ.get("DESTEK_DATA_DIR"):
+        return os.path.abspath(os.environ["DESTEK_DATA_DIR"])
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), "veri")
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "veri")
+
+
+def create_app(test_config=None, data_dir=None):
+    app = Flask(__name__, instance_path=os.path.abspath(data_dir or default_data_dir()))
     os.makedirs(app.instance_path, exist_ok=True)
 
     app.config.update(
@@ -96,6 +111,7 @@ def create_app(test_config=None):
     register_cli(app)
 
     _register_csrf(app)
+    _register_initial_setup(app, User)
     _register_template_helpers(app, Setting)
     _register_error_handlers(app)
 
@@ -139,6 +155,22 @@ def _register_csrf(app):
                 abort(400, description="Oturum doğrulaması başarısız. Sayfayı yenileyip tekrar deneyiniz.")
 
     app.jinja_env.globals["csrf_token"] = csrf_token
+
+
+def _register_initial_setup(app, User):
+    """Hiç yönetici yoksa (ilk kurulum) tüm istekler kurulum ekranına yönlendirilir."""
+
+    @app.before_request
+    def require_initial_setup():
+        if app.config.get("SETUP_DONE") or request.endpoint in ("auth.setup", "static"):
+            return None
+        has_admin = db.session.execute(
+            db.select(User.id).where(User.role == C.ROLE_ADMIN, User.active.is_(True)).limit(1)
+        ).first()
+        if has_admin:
+            app.config["SETUP_DONE"] = True
+            return None
+        return redirect(url_for("auth.setup"))
 
 
 def _register_template_helpers(app, Setting):

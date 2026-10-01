@@ -1,10 +1,11 @@
 """Yönetim: projeler, kategoriler, personel ve sistem ayarları (yalnızca yönetici)."""
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from .auth import admin_required, validate_password
 from .constants import ROLE_ADMIN, ROLES
-from .demo import clear_demo, demo_counts
+from .backup import backup_dir, create_backup, list_backups
+from .demo import clear_demo, demo_counts, seed_demo
 from .extensions import db
 from .models import Category, Project, Setting, SupportTicket as T, User, log_action
 
@@ -199,7 +200,22 @@ def settings():
                 db.session.commit()
                 flash(f"Demo veriler temizlendi: {tickets} kayıt, {users_deleted} personel silindi"
                       + (f", {deactivated} personel pasife alındı." if deactivated else "."), "success")
+        elif action == "load_demo":
+            if any(demo_counts()):
+                flash("Demo veriler zaten yüklü.", "warning")
+            else:
+                n = seed_demo()
+                log_action(current_user, "setting", None, "update", {"Demo veriler": ["", f"{n} demo kayıt yüklendi"]})
+                db.session.commit()
+                flash(f"{n} demo kayıt ve 5 demo personel yüklendi (demo personel şifresi: Demo.12345).", "success")
+        elif action == "backup_now":
+            path = create_backup(current_app)
+            flash(f"Yedek alındı: {path}" if path else "Yedek alınamadı.", "success" if path else "danger")
         return redirect(url_for("admin.settings"))
 
     demo_tickets, demo_users = demo_counts()
-    return render_template("admin/settings.html", demo_tickets=demo_tickets, demo_users=demo_users)
+    return render_template(
+        "admin/settings.html", demo_tickets=demo_tickets, demo_users=demo_users,
+        backups=list_backups(current_app)[:5], backup_path=backup_dir(current_app),
+        data_path=current_app.instance_path, access_urls=current_app.config.get("ACCESS_URLS", []),
+    )

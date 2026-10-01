@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}İlk Kurulum{% endblock %}
+{% block public %}
+<div class="login-wrap">
+  {% if remote %}
+  <div class="card login-card">
+    <h1>Program henüz kurulmadı</h1>
+    <p class="muted">İlk kurulum yalnızca programın yüklü olduğu bilgisayardan yapılabilir.
+      Lütfen o bilgisayarda programı açarak yönetici hesabını oluşturunuz.</p>
+  </div>
+  {% else %}
+  <form method="post" class="card login-card setup-card" autocomplete="off">
+    <div class="login-brand"><span class="brand-mark">TD</span></div>
+    <h1>İlk Kurulum</h1>
+    <p class="muted">Programı kullanmaya başlamak için yönetici hesabını oluşturun.</p>
+    {% include "_flash.html" %}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Kurum / birim adı (menüde görünür)
+      <input type="text" name="org_name" value="{{ form.get('org_name', org_name) }}" maxlength="100">
+    </label>
+    <label>Yönetici ad soyad
+      <input type="text" name="full_name" value="{{ form.get('full_name', '') }}" maxlength="100" required autofocus>
+    </label>
+    <label>Kullanıcı adı
+      <input type="text" name="username" value="{{ form.get('username', 'admin') }}" maxlength="50" required>
+    </label>
+    <label>Şifre (en az 8 karakter)
+      <input type="password" name="password" minlength="8" required autocomplete="new-password">
+    </label>
+    <label>Şifre (tekrar)
+      <input type="password" name="password2" minlength="8" required autocomplete="new-password">
+    </label>
+    <label class="f-check"><input type="checkbox" name="demo" value="1" {{ 'checked' if form.get('demo') }}>
+      Denemek için örnek (demo) veri yükle <span class="muted">– daha sonra Yönetim'den tek tuşla silinebilir</span></label>
+    <button type="submit" class="btn btn-primary btn-block">Kurulumu Tamamla</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

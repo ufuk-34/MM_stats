@@ -7,8 +7,9 @@ from urllib.parse import urlsplit
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
+from .constants import ROLE_ADMIN
 from .extensions import db
-from .models import User
+from .models import Setting, User, log_action
 
 bp = Blueprint("auth", __name__)
 
@@ -122,3 +123,56 @@ def change_password():
                 flash("Şifreniz güncellendi.", "success")
                 return redirect(url_for("dashboard.index"))
     return render_template("auth/password.html")
+
+
+LOCAL_ADDRESSES = {"127.0.0.1", "::1", "localhost"}
+
+
+@bp.route("/kurulum", methods=["GET", "POST"])
+def setup():
+    """İlk kurulum: hiç yönetici yokken ilk yönetici hesabı oluşturulur.
+
+    Güvenlik için yalnızca programın kurulu olduğu bilgisayardan (localhost) yapılabilir.
+    """
+    has_admin = db.session.execute(
+        db.select(User.id).where(User.role == ROLE_ADMIN, User.active.is_(True)).limit(1)
+    ).first()
+    if has_admin:
+        return redirect(url_for("auth.login"))
+    if request.remote_addr not in LOCAL_ADDRESSES:
+        return render_template("auth/setup.html", remote=True, form={}), 403
+
+    form = request.form if request.method == "POST" else {}
+    if request.method == "POST":
+        org_name = form.get("org_name", "").strip()[:100]
+        full_name = form.get("full_name", "").strip()[:100]
+        username = form.get("username", "").strip().lower()[:50]
+        password = form.get("password", "")
+        error = validate_password(password, form.get("password2", ""))
+        if not full_name or not username:
+            error = "Ad soyad ve kullanıcı adı zorunludur."
+        elif not username.replace(".", "").replace("_", "").replace("-", "").isalnum():
+            error = "Kullanıcı adı yalnızca harf, rakam, nokta, alt çizgi ve tire içerebilir."
+        if error:
+            flash(error, "danger")
+        else:
+            user = db.session.execute(db.select(User).filter_by(username=username)).scalar_one_or_none()
+            if user is None:
+                user = User(username=username, full_name=full_name, role=ROLE_ADMIN)
+                db.session.add(user)
+            user.full_name, user.role, user.active = full_name, ROLE_ADMIN, True
+            user.set_password(password)
+            if org_name:
+                Setting.set("org_name", org_name)
+            db.session.flush()
+            log_action(user, "user", user.id, "create", {"Kullanıcı": ["-", f"{full_name} ({username}) - ilk kurulum"]})
+            db.session.commit()
+            if form.get("demo") == "1":
+                from .demo import seed_demo
+                seed_demo()
+            session.clear()
+            session.permanent = True
+            login_user(user)
+            flash("Kurulum tamamlandı. Programı kullanmaya başlayabilirsiniz.", "success")
+            return redirect(url_for("dashboard.index"))
+    return render_template("auth/setup.html", remote=False, form=form)

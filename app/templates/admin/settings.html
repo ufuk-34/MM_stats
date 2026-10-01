@@ -21,8 +21,38 @@
   {% if demo_tickets or demo_users %}
   <label class="f-check"><input type="checkbox" name="confirm" value="1"> Demo verilerin silineceğini onaylıyorum</label>
   <div class="form-actions"><button class="btn btn-danger-outline" type="submit">Demo Verileri Temizle</button></div>
-  {% else %}
-  <p class="muted small">Demo veri yüklemek için: <code>flask --app app seed-demo</code></p>
   {% endif %}
 </form>
+{% if not demo_tickets and not demo_users %}
+<form method="post" class="card form-narrow">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="load_demo">
+  <p class="muted">Programı denemek için 5 demo personel ve 45 örnek kayıt yükleyebilirsiniz.</p>
+  <button class="btn btn-light" type="submit">Demo Veri Yükle</button>
+</form>
+{% endif %}
+
+<div class="card form-narrow">
+  <h2>Erişim ve Yedekleme</h2>
+  {% if access_urls %}
+  <p>Diğer bilgisayarlar tarayıcıdan şu adresle bağlanır:<br>
+    {% for u in access_urls %}<strong>{{ u }}</strong>{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+  {% endif %}
+  <p class="small">Veri klasörü: <code>{{ data_path }}</code><br>
+     Yedek klasörü: <code>{{ backup_path }}</code></p>
+  <p class="small muted">Program açıkken her gün otomatik yedek alınır, son 30 yedek saklanır.
+     Yedekleri düzenli olarak başka bir diske / ağ klasörüne kopyalamanız önerilir.</p>
+  {% if backups %}
+  <table class="table compact">
+    <tbody>
+    {% for b in backups %}<tr><td>{{ b.name }}</td><td class="num muted">{{ b.size_kb }} KB</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted small">Henüz yedek yok.</p>{% endif %}
+  <form method="post" class="form-actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="backup_now">
+    <button class="btn btn-light" type="submit">Şimdi Yedek Al</button>
+  </form>
+</div>
 {% endblock %}

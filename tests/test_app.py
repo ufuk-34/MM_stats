@@ -31,7 +31,7 @@ def app(tmp_path):
         "TESTING": True,
         "SECRET_KEY": "test",
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'test.db'}",
-    })
+    }, data_dir=str(tmp_path))
     auth_module._failed_logins.clear()
     with app.app_context():
         for username, name, role in (
@@ -496,3 +496,60 @@ def test_all_pages_render(client, app):
                 "/stats/", "/stats/?period=day", "/stats/?period=week", "/stats/?period=custom&date_from=2020-01-01&date_to=2030-01-01",
                 "/reports/", "/admin/projects", "/admin/categories", "/admin/users", "/admin/settings", "/password"):
         assert client.get(url).status_code == 200, url
+
+
+# --------------------------------------------------------------------------- #
+# Tek bilgisayar kurulumu: ilk kurulum ekranı ve yedekleme
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def fresh_client(tmp_path):
+    """Hiç kullanıcısı olmayan, yeni kurulmuş program."""
+    app = create_app({"TESTING": True, "SECRET_KEY": "test",
+                      "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'fresh.db'}"}, data_dir=str(tmp_path))
+    return app, app.test_client()
+
+
+def test_initial_setup_creates_admin(fresh_client):
+    app, client = fresh_client
+    # Yönetici yokken her sayfa kurulum ekranına yönlenir
+    r = client.get("/tickets/")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/kurulum")
+    assert "İlk Kurulum" in page_text(client.get("/kurulum"))
+    r = client.post("/kurulum", data={"csrf_token": csrf(client), "org_name": "Bilgi İşlem",
+                                      "full_name": "Ayşe Yönetici", "username": "admin",
+                                      "password": "Kurulum.123", "password2": "Kurulum.123", "demo": "1"})
+    assert r.status_code == 302
+    assert client.get("/admin/settings").status_code == 200     # otomatik giriş yapıldı
+    with app.app_context():
+        admin = db.session.execute(db.select(User).filter_by(username="admin")).scalar_one()
+        assert admin.role == ROLE_ADMIN and admin.check_password("Kurulum.123")
+        assert db.session.execute(db.select(db.func.count(T.id))).scalar() == 45
+    # Kurulum tamamlandıktan sonra kurulum ekranı tekrar kullanılamaz
+    assert client.get("/kurulum").status_code == 302
+
+
+def test_initial_setup_only_from_local_computer(fresh_client):
+    app, client = fresh_client
+    r = client.get("/kurulum", environ_base={"REMOTE_ADDR": "192.168.1.50"})
+    assert r.status_code == 403
+    client.get("/kurulum")
+    r = client.post("/kurulum", environ_base={"REMOTE_ADDR": "192.168.1.50"},
+                    data={"csrf_token": csrf(client), "full_name": "X", "username": "x",
+                          "password": "Kurulum.123", "password2": "Kurulum.123"})
+    assert r.status_code == 403
+    with app.app_context():
+        assert db.session.execute(db.select(db.func.count(User.id))).scalar() == 0
+
+
+def test_backup(app, client):
+    from app.backup import create_backup, list_backups
+    make_ticket(app, "personel1")
+    path = create_backup(app, daily=True)
+    assert path and create_backup(app, daily=True) is None      # günde bir otomatik yedek
+    import sqlite3
+    with sqlite3.connect(path) as con:
+        assert con.execute("select count(*) from support_tickets").fetchone()[0] == 1
+    login(client, "yonetici")
+    client.post("/admin/settings", data={"csrf_token": csrf(client), "action": "backup_now"})
+    assert len(list_backups(app)) == 2
