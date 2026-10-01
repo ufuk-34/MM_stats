@@ -1,32 +1,18 @@
-"""Raporlar: filtrelenmiş kayıtların Excel'e aktarılması (yalnızca yönetici)."""
+"""Raporlar: filtrelenmiş kayıtların grafikli Excel raporu olarak aktarılması (yalnızca yönetici)."""
 from datetime import date, datetime
 from io import BytesIO
 
 from flask import Blueprint, render_template, request, send_file
 from flask_login import current_user
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
 
 from .auth import admin_required
+from .excel_report import build_report_workbook
 from .extensions import db
-from .models import Category, Project, User
-from .queries import (
-    STATUS_GROUPS, TicketFilters, by_category, by_project, by_user, stat_conditions, summary,
-    ticket_query,
-)
+from .models import Category, Project, Setting, User
+from .queries import STATUS_GROUPS, TicketFilters, stat_conditions, summary
 from .constants import SOURCES, STATUSES
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
-
-EXPORT_COLUMNS = [
-    ("Kayıt No", 12), ("Tarih", 11), ("Saat", 7), ("Proje", 28), ("Talep Sahibi", 22),
-    ("Telefon", 15), ("İletişim Kanalı", 14), ("Sorun Kaynağı", 24), ("Sorun Kategorisi", 20),
-    ("Öncelik", 9), ("Açıklama", 50), ("Personel", 20), ("İşlem Süresi (dk)", 10),
-    ("Sonuç / Yapılan İşlem", 50), ("Durum", 12),
-]
-HEADER_FILL = PatternFill("solid", fgColor="1F3A5F")
-HEADER_FONT = Font(bold=True, color="FFFFFF")
 
 
 @bp.route("/")
@@ -45,27 +31,9 @@ def index():
     )
 
 
-def _write_row(ws, row_idx, values):
-    for col_idx, value in enumerate(values, start=1):
-        cell = ws.cell(row=row_idx, column=col_idx, value=value)
-        if isinstance(value, str):
-            # Formül enjeksiyonuna karşı: "=" ile başlayan metin formül olarak yorumlanmasın
-            cell.data_type = "s"
-
-
-def _header(ws, row_idx, titles):
-    for col_idx, title in enumerate(titles, start=1):
-        cell = ws.cell(row=row_idx, column=col_idx, value=title)
-        cell.fill, cell.font = HEADER_FILL, HEADER_FONT
-        cell.alignment = Alignment(vertical="center", wrap_text=True)
-
-
 def filter_description(filters):
+    """Tarih dışındaki filtrelerin okunur özeti (tarih aralığı raporda ayrıca yazılır)."""
     parts = []
-    if filters.date_from or filters.date_to:
-        d1 = filters.date_from.strftime("%d.%m.%Y") if filters.date_from else "…"
-        d2 = filters.date_to.strftime("%d.%m.%Y") if filters.date_to else "…"
-        parts.append(f"Tarih: {d1} - {d2}")
     if filters.project_id:
         p = db.session.get(Project, filters.project_id)
         parts.append(f"Proje: {p.name if p else '-'}")
@@ -84,72 +52,27 @@ def filter_description(filters):
         parts.append(f"Arama: {filters.q}")
     if filters.archived:
         parts.append("Yalnızca arşivlenmiş kayıtlar")
-    return "; ".join(parts) or "Filtre yok (tüm kayıtlar)"
+    return "; ".join(parts) or "Ek filtre yok"
+
+
+def period_description(filters):
+    if not filters.date_from and not filters.date_to:
+        return "Tüm tarihler"
+    d1 = filters.date_from.strftime("%d.%m.%Y") if filters.date_from else "…"
+    d2 = filters.date_to.strftime("%d.%m.%Y") if filters.date_to else "…"
+    return d1 if d1 == d2 else f"{d1} – {d2}"
 
 
 def build_workbook(filters, user):
+    """Grafikli Excel raporu (bkz. excel_report.py)."""
     conds = filters.conditions(user)
-    tickets = db.session.execute(ticket_query(conds)).unique().scalars().all()
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Kayıtlar"
-    _header(ws, 1, [c[0] for c in EXPORT_COLUMNS])
-    for i, t in enumerate(tickets, start=2):
-        _write_row(ws, i, [
-            t.ticket_no, t.created_at.strftime("%d.%m.%Y"), t.created_at.strftime("%H:%M"),
-            t.project.name, t.requester_name, t.requester_phone, t.channel_label, t.source_label,
-            t.category.name, t.priority_label, t.description, t.created_by.full_name,
-            t.duration_minutes, t.resolution, t.status_label,
-        ])
-        ws.cell(row=i, column=11).alignment = Alignment(wrap_text=True, vertical="top")
-        ws.cell(row=i, column=14).alignment = Alignment(wrap_text=True, vertical="top")
-    for idx, (_, width) in enumerate(EXPORT_COLUMNS, start=1):
-        ws.column_dimensions[get_column_letter(idx)].width = width
-    ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(EXPORT_COLUMNS))}{max(len(tickets) + 1, 1)}"
-
-    # Özet sayfası: aynı filtrelerle hesaplanan istatistikler
-    ss = wb.create_sheet("Özet")
-    s_conds = conds if filters.archived else stat_conditions(filters, user)
-    s = summary(s_conds)
-    rows = [
-        ("Rapor tarihi", datetime.now().strftime("%d.%m.%Y %H:%M")),
-        ("Filtreler", filter_description(filters)),
-        (None, None),
-        ("Toplam destek kaydı", s["total"]),
-        ("Sistem Kaynaklı", s["system"]),
-        ("Kullanıcı İşlemi Kaynaklı", s["user"]),
-        ("Çözülen (Çözüldü + Kapatıldı)", s["done"]),
-        ("Açık / Bekleyen", s["pending"]),
-        ("Ortalama işlem süresi (dk)", s["avg_duration"]),
-        ("Toplam işlem süresi (dk)", s["total_duration"]),
-    ]
-    for i, (k, v) in enumerate(rows, start=1):
-        _write_row(ss, i, [k, v])
-        if k:
-            ss.cell(row=i, column=1).font = Font(bold=True)
-
-    r = len(rows) + 2
-    _header(ss, r, ["Proje", "Kayıt", "%"])
-    for p in by_project(s_conds):
-        r += 1
-        _write_row(ss, r, [p["name"], p["count"], p["pct"]])
-    r += 2
-    _header(ss, r, ["Sorun Kategorisi", "Kayıt", "%"])
-    for c in by_category(s_conds):
-        r += 1
-        _write_row(ss, r, [c["name"], c["count"], c["pct"]])
-    r += 2
-    _header(ss, r, ["Personel", "Kayıt", "Çözülen", "Bekleyen", "Toplam Süre (dk)"])
-    for u in by_user(s_conds):
-        r += 1
-        _write_row(ss, r, [u["name"], u["total"], u["done"], u["pending"], u["duration"]])
-    ss.column_dimensions["A"].width = 34
-    for col in "BCDE":
-        ss.column_dimensions[col].width = 16
-    ss.cell(row=2, column=2).alignment = Alignment(wrap_text=True)
-    return wb, len(tickets)
+    stat_conds = conds if filters.archived else stat_conditions(filters, user)
+    return build_report_workbook(
+        filters, user, conds, stat_conds,
+        org_name=Setting.get("org_name"),
+        period_text=period_description(filters),
+        filter_text="Filtreler: " + filter_description(filters),
+    )
 
 
 @bp.route("/export")
@@ -160,7 +83,7 @@ def export():
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    filename = f"destek_kayitlari_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    filename = f"destek_raporu_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return send_file(
         buf, as_attachment=True, download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

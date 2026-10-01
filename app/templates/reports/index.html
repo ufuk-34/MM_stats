@@ -5,7 +5,7 @@
 <div class="page-head">
   <div>
     <h1>Raporlar</h1>
-    <p class="muted">Filtreleri seçip kayıtları Excel dosyasına aktarın. Dosyada "Kayıtlar" ve "Özet" sayfaları bulunur.</p>
+    <p class="muted">Filtreleri seçip grafikli raporu Excel dosyası olarak indirin.</p>
   </div>
 </div>
 
@@ -18,5 +18,14 @@
   </div>
   <a class="btn btn-primary btn-lg" href="{{ url_for('reports.export', **filters.to_args()) }}">Excel'e Aktar</a>
 </div>
-<p class="muted small">Excel alanları: Kayıt No, Tarih, Saat, Proje, Talep Sahibi, Telefon, İletişim Kanalı, Sorun Kaynağı, Sorun Kategorisi, Öncelik, Açıklama, Personel, İşlem Süresi, Sonuç / Yapılan İşlem, Durum.</p>
+<div class="card form-narrow">
+  <h2>Excel dosyasında neler var?</h2>
+  <ul class="plain-list">
+    <li><strong>Rapor</strong> – dashboard görünümü: özet kutuları, öne çıkanlar ve grafikler
+      (projeler, sorun kaynağı, günlere/aylara göre, sorun kategorileri, personel iş yükü). Tek A4 sayfasına yazdırılır.</li>
+    <li><strong>Tablolar</strong> – grafiklerin dayandığı özet tablolar.</li>
+    <li><strong>Kayıtlar</strong> – filtrelenmiş kayıtların tam listesi (Kayıt No, Tarih, Saat, Proje, Talep Sahibi, Telefon,
+      Sorun Kaynağı, Kategori, Açıklama, Personel, İşlem Süresi, Sonuç, Durum).</li>
+  </ul>
+</div>
 {% endblock %}

@@ -339,12 +339,34 @@ def test_10_excel_export(client, app):
         assert col in headers, col
     assert ws.max_row == 3   # başlık + 2 filtrelenmiş kayıt
     assert {ws.cell(row=i, column=headers.index("Sorun Kaynağı") + 1).value for i in (2, 3)} == {"Kullanıcı İşlemi Kaynaklı"}
-    assert "Özet" in wb.sheetnames
+    # Grafikli rapor: ilk sayfa "Rapor" (özet kutuları + 5 grafik), sayılar Kayıtlar'dan formülle hesaplanır
+    assert wb.sheetnames == ["Rapor", "Tablolar", "Kayıtlar"]
+    assert wb.active.title == "Rapor"
+    assert len(wb["Rapor"]._charts) == 5
+    tables = wb["Tablolar"]
+    assert tables["B2"].value == "=COUNTA('Kayıtlar'!$A$2:$A$3)"
+    assert tables["B3"].value.startswith("=COUNTIF('Kayıtlar'!$H$2:$H$3,\"Sistem Kaynaklı\")")
+    assert wb["Rapor"]["A7"].value == "='Tablolar'!$B$2"
+    assert wb.calculation.fullCalcOnLoad   # Excel açılışta hesaplar
 
     # Formül enjeksiyonu: "=" ile başlayan metin formül değil, düz metin olarak yazılır
     wb_all = load_workbook(BytesIO(client.get("/reports/export").data))
     cells = [c for row in wb_all["Kayıtlar"].iter_rows(min_row=2) for c in row if isinstance(c.value, str) and c.value.startswith("=")]
     assert cells and all(c.data_type == "s" for c in cells)
+
+
+def test_10b_excel_report_empty_and_long_range(client, app):
+    """Kayıt yokken ve uzun tarih aralığında (aylık grafik) rapor sorunsuz oluşur."""
+    login(client, "yonetici")
+    r = client.get("/reports/export", query_string={"date_from": "2026-01-01", "date_to": "2026-01-31"})
+    wb = load_workbook(BytesIO(r.data))
+    assert wb["Kayıtlar"].max_row == 1 and len(wb["Rapor"]._charts) == 5
+    make_ticket(app, "personel1", created_at=datetime.now() - timedelta(days=70))
+    make_ticket(app, "personel1")
+    r = client.get("/reports/export", query_string={"date_from": (date.today() - timedelta(days=90)).isoformat(),
+                                                  "date_to": date.today().isoformat()})
+    tables = load_workbook(BytesIO(r.data))["Tablolar"]
+    assert any(row[0].value == "Aylara Göre" for row in tables.iter_rows(max_col=1))
 
 
 # --------------------------------------------------------------------------- #

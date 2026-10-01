@@ -295,3 +295,5 @@ legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
 .setup-card { max-width: 440px; }
 .setup-card .f-check { font-weight: 400; margin: 4px 0 16px; align-items: flex-start; }
 .setup-card .f-check input { margin-top: 3px; }
+.plain-list { margin: 0; padding-left: 18px; }
+.plain-list li { margin-bottom: 6px; }
