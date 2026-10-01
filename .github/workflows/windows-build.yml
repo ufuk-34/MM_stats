@@ -1,6 +1,6 @@
-# Windows kurulum dosyasını (DestekKayit-Kurulum.exe) üretir.
-# Çıktılar: Actions -> ilgili çalıştırma -> "Artifacts" bölümünden indirilir.
-# "v1.0.0" gibi bir etiket (tag) gönderilirse ayrıca GitHub Release oluşturulur.
+# Windows kurulum dosyasını (DestekKayit-Kurulum.exe) üretir ve GitHub Releases sayfasında yayınlar.
+# Giriş gerektirmeyen sabit indirme bağlantısı (her zaman en son sürüm):
+#   https://github.com/ufuk-34/MM_stats/releases/latest/download/DestekKayit-Kurulum.exe
 name: Windows Kurulum Dosyası
 
 on:
@@ -77,10 +77,17 @@ jobs:
             KURULUM.md
           retention-days: 90
 
-      - name: GitHub Release
-        if: github.ref_type == 'tag'
+      - name: GitHub Release (en son sürüm)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v1.0.{0}', github.run_number) }}
+          target_commitish: ${{ github.sha }}
+          name: Teknik Destek Kayıt Programı ${{ github.ref_type == 'tag' && github.ref_name || format('v1.0.{0}', github.run_number) }}
+          make_latest: true
+          body: |
+            **İndirme:** `DestekKayit-Kurulum.exe` dosyasını indirip çift tıklayın.
+            Kurulum ve kullanım adımları için `KURULUM.md` / programla gelen Kullanım Kılavuzu'na bakınız.
+            `DestekKayit-Tasinabilir.zip`: kurulum gerektirmeyen sürüm (zip'i açıp DestekKayit.exe'yi çalıştırın).
           files: |
             dist/DestekKayit-Kurulum.exe
             dist/DestekKayit-Tasinabilir.zip

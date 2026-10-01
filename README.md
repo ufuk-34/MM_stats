@@ -23,9 +23,9 @@ bilgisayarlar bağlanamaz, internet bağlantısı gerekmez. Tüm personel kayıt
 kendi hesabıyla girer; ortak kullanım için 15 dakika hareketsizlikte oturum kendiliğinden kapanır
 (`IDLE_TIMEOUT_MINUTES`).
 
-1. GitHub → **Actions** → "Windows Kurulum Dosyası" → son başarılı çalıştırma → **Artifacts** →
-   `DestekKayit-Windows` indirilir. İçinde `DestekKayit-Kurulum.exe` (kurulum sihirbazı) ve
-   `DestekKayit-Tasinabilir.zip` (kurulumsuz sürüm) bulunur.
+1. Kurulum dosyası (giriş gerektirmez, her zaman en son sürüm):
+   **https://github.com/ufuk-34/MM_stats/releases/latest/download/DestekKayit-Kurulum.exe**
+   Tüm sürümler ve kurulumsuz (zip) sürüm: https://github.com/ufuk-34/MM_stats/releases
 2. `DestekKayit-Kurulum.exe` çalıştırılır (C:\DestekKayit klasörüne kurar, masaüstü kısayolu ve
    isteğe bağlı otomatik başlatma).
 3. Program ilk açıldığında tarayıcıda **İlk Kurulum** ekranı gelir; yönetici hesabı burada oluşturulur.
