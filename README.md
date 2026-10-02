@@ -95,6 +95,7 @@ arşiv, işlem geçmişi, yönetim ekranları, demo temizleme, CSRF, giriş kili
 | `app/dashboard.py` | Ana ekran (Bugün / Bu Hafta / Bu Ay, bu ay–geçen ay karşılaştırması) |
 | `app/stats.py` | İstatistikler (günlük, haftalık, aylık, özel aralık + önceki dönemle karşılaştırma) |
 | `app/reports.py` | Raporlar sayfası ve Excel indirme |
+| `app/monthly_report.py` | Aylık bilgilendirme raporu (birimlere gönderilir): ayın proje bazında Bireysel / Sistemsel / Toplam tablosu ve dairesel grafikleri + yıllık genel istatistik (ay ay); kişisel veri içermez |
 | `app/excel_report.py` | Grafikli Excel raporu: "Rapor" (özet kutuları + 5 grafik, tek A4), "Tablolar", "Kayıtlar"; sayılar Kayıtlar'dan formülle hesaplanır |
 | `app/admin.py` | Projeler, kategoriler, personel, sistem ayarları |
 | `app/demo.py`, `app/cli.py` | Demo veri ve komut satırı komutları |

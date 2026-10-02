@@ -83,3 +83,6 @@ DEFAULT_CATEGORIES = (
     "Bilgi talebi",
     "Diğer",
 )
+
+MONTHS_TR = ("", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
+             "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık")

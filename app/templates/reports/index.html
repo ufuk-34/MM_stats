@@ -5,9 +5,31 @@
 <div class="page-head">
   <div>
     <h1>Raporlar</h1>
-    <p class="muted">Filtreleri seçip grafikli raporu Excel dosyası olarak indirin.</p>
+    <p class="muted">Birimlere gönderilecek aylık rapor ve ayrıntılı grafikli Excel raporu.</p>
   </div>
 </div>
+
+<div class="card">
+  <h2>Aylık Bilgilendirme Raporu</h2>
+  <p class="muted small">Birimlere gönderilmek üzere: seçilen ayın proje bazında <strong>Bireysel / Sistemsel / Toplam</strong>
+    tablosu ve dairesel grafikleri, ardından yılbaşından itibaren ay ay <strong>Yıllık Genel İstatistik</strong>.
+    Kişisel veri (ad, telefon, açıklama) içermez. Excel'de "Dosya → Farklı Kaydet → PDF" ile PDF yapılabilir.</p>
+  <form method="get" action="{{ url_for('reports.monthly') }}" class="inline-form">
+    <label>Yıl
+      <select name="year">
+        {% for y in years %}<option value="{{ y }}" {{ 'selected' if y == default_year }}>{{ y }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Ay
+      <select name="month">
+        {% for m in range(1, 13) %}<option value="{{ m }}" {{ 'selected' if m == default_month }}>{{ months[m] }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary">Aylık Raporu İndir</button>
+  </form>
+</div>
+
+<h2 class="section-title">Ayrıntılı Grafikli Rapor</h2>
 
 {{ ticket_filters(filters, url_for('reports.index'), projects, categories, users, status_groups, show_search=True, show_archived=True) }}
 

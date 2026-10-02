@@ -369,6 +369,49 @@ def test_10b_excel_report_empty_and_long_range(client, app):
     assert any(row[0].value == "Aylara Göre" for row in tables.iter_rows(max_col=1))
 
 
+def test_10c_monthly_report(client, app):
+    """Aylık bilgilendirme raporu: ay ay Bireysel/Sistemsel tablo, dairesel grafikler, kişisel veri yok."""
+    i = ids(app)
+    year = date.today().year
+    may, june = datetime(year, 5, 10, 10, 0), datetime(year, 6, 3, 9, 0)
+    make_ticket(app, "personel1", created_at=may, source="user", requester_name="Gizli Kişi",
+                requester_phone="0555 111 22 33")
+    make_ticket(app, "personel1", created_at=may, source="system")
+    make_ticket(app, "personel2", created_at=may, source="system", project_id=i["projects"][1])
+    make_ticket(app, "personel2", created_at=june, source="user")
+    archived = make_ticket(app, "personel2", created_at=june, source="system")
+    with app.app_context():
+        db.session.get(T, archived).archived = True
+        db.session.commit()
+
+    login(client, "yonetici")
+    assert "Aylık Bilgilendirme Raporu" in page_text(client.get("/reports/"))
+    r = client.get("/reports/monthly", query_string={"year": year, "month": 6})
+    assert r.status_code == 200
+    wb = load_workbook(BytesIO(r.data))
+    ws = wb.active
+    assert ws.title == f"Haziran {year}"
+    cells = {c.coordinate: c.value for row in ws.iter_rows() for c in row if c.value is not None}
+    text = " ".join(str(v) for v in cells.values())
+    # KVKK: birimlere gönderilen dosyada kişisel veri bulunmaz
+    assert "Gizli Kişi" not in text and "0555" not in text
+    # Haziran özeti: 1 bireysel, 0 sistemsel (arşivlenen dahil değil)
+    rows = {ws.cell(row=r, column=1).value: r for r in range(1, ws.max_row + 1)}
+    june_total = rows["Haziran Toplam"]          # ay toplamı satırı (formül)
+    assert ws.cell(row=june_total, column=2).value.startswith("=SUM(")
+    project_row = rows["Dijital Otomasyon Projesi 1"]
+    assert [ws.cell(row=project_row, column=c).value for c in (2, 3)] == [1, 0]
+    # Yıllık bölüm: Mayıs bloğu (2 proje) ve genel toplam formülü
+    assert "Mayıs" in text and "Genel Toplam" in text
+    may_values = [(ws.cell(row=r, column=1).value, ws.cell(row=r, column=2).value, ws.cell(row=r, column=3).value)
+                  for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value == "Dijital Otomasyon Projesi 2"]
+    assert ("Dijital Otomasyon Projesi 2", 0, 1) in may_values
+    assert ws.cell(row=rows["Genel Toplam"], column=4).value.startswith("=")
+    assert len(ws._charts) == 4      # ay ve yıl için ikişer dairesel grafik
+    # Geçersiz parametre
+    assert client.get("/reports/monthly", query_string={"year": year, "month": 13}).status_code == 400
+
+
 # --------------------------------------------------------------------------- #
 # Test 11: Personel yönetici ekranlarına erişemiyor mu?
 # --------------------------------------------------------------------------- #
@@ -378,7 +421,7 @@ def test_11_staff_cannot_access_admin_pages(client, app):
     own = make_ticket(app, "personel1")
     login(client, "personel1")
     for url in ("/admin/", "/admin/projects", "/admin/categories", "/admin/users", "/admin/settings",
-                "/reports/", "/reports/export"):
+                "/reports/", "/reports/export", "/reports/monthly"):
         assert client.get(url).status_code == 403, url
     token = csrf(client)
     assert client.post("/admin/projects", data={"csrf_token": token, "name": "X"}).status_code == 403

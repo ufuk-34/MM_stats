@@ -297,3 +297,4 @@ legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
 .setup-card .f-check input { margin-top: 3px; }
 .plain-list { margin: 0; padding-left: 18px; }
 .plain-list li { margin-bottom: 6px; }
+.section-title { margin: 8px 0 12px; }

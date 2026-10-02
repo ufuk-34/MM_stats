@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from flask import Blueprint, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from .constants import PENDING_STATUSES
+from .constants import MONTHS_TR, PENDING_STATUSES
 from .extensions import db
 from .models import SupportTicket as T
 from .queries import (
@@ -70,6 +70,3 @@ def index():
         filter_args=filters.to_args(),
     )
 
-
-MONTHS_TR = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
-             "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
