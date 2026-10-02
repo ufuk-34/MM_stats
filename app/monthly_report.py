@@ -1,11 +1,11 @@
 """Aylık bilgilendirme raporu (birimlere gönderilmek üzere).
 
-Kurumun daha önce kullandığı "Yıllık Genel İstatistik" çıktısının biçimini izler:
-her ay için proje satırları, Bireysel / Sistemsel / Toplam sütunları, ay toplamı ve genel toplam.
-Ek olarak dairesel grafikler içerir.
+Sade, kurumsal tasarım: beyaz zemin, ince çizgiler, büyük rakamlar, iki vurgu rengi
+(Bireysel = mercan, Sistemsel = petrol) ve halka grafikler. Tek çalışma sayfası, iki A4 baskı sayfası:
 
-  Sayfa 1: Seçilen ayın özeti (proje tablosu, oranlar, önceki ayla karşılaştırma, 2 dairesel grafik)
-  Sayfa 2: Yıllık genel istatistik (Ocak - seçilen ay, iki sütunlu ay blokları, genel toplam, 2 dairesel grafik)
+  Sayfa 1 - Aylık özet: özet kutuları, projelere göre tablo (pay çubuklu), iki halka grafik
+  Sayfa 2 - Yıllık genel istatistik: ay x proje matrisi (Bireysel / Sistemsel / Toplam),
+            genel toplam, aylık eğilim grafiği ve yıllık proje dağılımı
 
 KVKK: Dosya birimlerle paylaşılacağı için kişisel veri (talep sahibi adı, telefon, açıklama)
 İÇERMEZ; yalnızca sayısal istatistikler bulunur. Sayımlar programdan alınır, toplamlar formüldür.
@@ -14,34 +14,45 @@ from collections import defaultdict
 from datetime import date, datetime
 
 from openpyxl import Workbook
-from openpyxl.chart import PieChart, Reference
+from openpyxl.chart import BarChart, DoughnutChart, Reference
 from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.legend import Legend
 from openpyxl.chart.series import DataPoint
+from openpyxl.formatting.rule import DataBarRule
 from openpyxl.styles import Alignment, Border, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from openpyxl.workbook.properties import CalcProperties
 from openpyxl.worksheet.pagebreak import Break
 
 from .constants import MONTHS_TR, SOURCE_SYSTEM, SOURCE_USER
-from .excel_report import BLUE, MUTED, NAVY, ORANGE, _f, _font, _rich, _set, _title
+from .excel_report import _f, _font, _rich, _set, _title
 from .extensions import db
 from .models import Project, SupportTicket as T
 
-LIGHT = PatternFill("solid", fgColor="DEEBF7")     # başlık bandı
-BIREYSEL_FILL = PatternFill("solid", fgColor="BDD7EE")
-DARK = PatternFill("solid", fgColor="2F5597")      # Toplam sütunu ve ay toplamı
-SECTION = PatternFill("solid", fgColor=NAVY)
-LINE = Side(style="thin", color="FFFFFF")
-CELL_BORDER = Border(left=LINE, right=LINE, top=LINE, bottom=LINE)
-PROJECT_COLORS = ["1BAF7A", "4A3AA7", "EDA100", "E87BA4", "008300", "E34948", "2A78D6", "EB6834"]
+# Tasarım değerleri
+INK = "1F2937"          # ana metin
+SUB = "6B7280"          # ikincil metin
+HAIR = "E5E7EB"         # ince çizgi
+ZEBRA = "F8FAFC"        # satır şeridi
+TOTAL_BG = "F1F5F9"     # toplam satırı / toplam sütunları
+BIREYSEL = "D9622B"     # mercan  (renk körlüğü testinden geçti)
+SISTEMSEL = "00929C"    # petrol
+PROJECT_COLORS = ["4A3AA7", "C9851A", "C2477A", "2A78D6", "3F8F3A"]
+ZERO_DASH = '0;-0;"–"'
 
-BLOCKS = ((1, "A"), (6, "F"))       # sol blok A-D (Ocak-Haziran), sağ blok F-I (Temmuz-Aralık)
+COLS = 13               # sayfa 13 eşit sütunlu bir ızgaraya oturur (A-M)
+COL_W = 8.1
+FIRST_COL_W = 12.5      # ay adları ve "Genel Toplam" için
+DATA_COL = 15           # grafik yardımcı verisi: O-P sütunları (yazdırma alanı dışında)
+hair = Side(style="thin", color=HAIR)
+ink_thin = Side(style="thin", color=INK)
+ink_line = Side(style="medium", color=INK)
 
 
 def default_period(today=None):
     """Varsayılan: tamamlanmış son ay."""
     today = today or date.today()
-    first = today.replace(day=1)
-    prev = date.fromordinal(first.toordinal() - 1)
+    prev = date.fromordinal(today.replace(day=1).toordinal() - 1)
     return prev.year, prev.month
 
 
@@ -75,67 +86,98 @@ def _count_month(year, month):
 
 
 # --------------------------------------------------------------------------- #
-# Biçimli tablo parçaları
+# Tasarım yardımcıları
 # --------------------------------------------------------------------------- #
 
-def _header(ws, row, col):
-    labels = ("Proje", "Bireysel", "Sistemsel", "Toplam")
-    fills = (None, BIREYSEL_FILL, None, DARK)
-    for i, (label, fill) in enumerate(zip(labels, fills)):
-        c = _set(ws, (row, col + i), label, font=_font(10, True, "FFFFFF" if fill is DARK else NAVY),
-                 alignment=Alignment(horizontal="left" if i == 0 else "center"))
+def L(col):
+    return get_column_letter(col)
+
+
+def _merge(ws, row, c1, c2, value, formula=False, **style):
+    if c2 > c1:
+        ws.merge_cells(start_row=row, start_column=c1, end_row=row, end_column=c2)
+    return (_f if formula else _set)(ws, (row, c1), value, **style)
+
+
+def _line(ws, row, c1, c2, top=None, bottom=None, fill=None):
+    """Satır aralığına üst/alt çizgi ve zemin uygular (birleştirilmiş hücreler dahil)."""
+    for c in range(c1, c2 + 1):
+        cell = ws.cell(row=row, column=c)
+        cell.border = Border(top=top, bottom=bottom)
         if fill:
-            c.fill = fill
-        c.border = CELL_BORDER
+            cell.fill = PatternFill("solid", fgColor=fill)
 
 
-def _data_row(ws, row, col, name, user, system, bold=False):
-    _set(ws, (row, col), name, font=_font(10, bold, NAVY), border=CELL_BORDER)
-    b = _set(ws, (row, col + 1), user, font=_font(10, bold), alignment=Alignment(horizontal="center"))
-    b.fill, b.border = BIREYSEL_FILL, CELL_BORDER
-    _set(ws, (row, col + 2), system, font=_font(10, bold), alignment=Alignment(horizontal="center"), border=CELL_BORDER)
-    L = lambda k: ws.cell(row=row, column=col + k).coordinate  # noqa: E731
-    _f(ws, (row, col + 3), f"={L(1)}+{L(2)}", font=_font(10, True, "FFFFFF"), fill=DARK,
-       alignment=Alignment(horizontal="center"), border=CELL_BORDER)
+def _page_header(ws, row, kicker, title, subtitle):
+    """Sayfa başlığı: küçük üst etiket, büyük başlık, alt bilgi ve koyu çizgi."""
+    _merge(ws, row, 1, COLS, kicker, font=_font(9, True, SUB))
+    _merge(ws, row + 1, 1, COLS, title, font=_font(24, True, INK), alignment=Alignment(vertical="center"))
+    ws.row_dimensions[row + 1].height = 36
+    _merge(ws, row + 2, 1, COLS, subtitle, font=_font(9, color=SUB), alignment=Alignment(vertical="top"))
+    ws.row_dimensions[row + 2].height = 18
+    _line(ws, row + 3, 1, COLS, top=ink_line)
+    ws.row_dimensions[row + 3].height = 8
+    return row + 5
 
 
-def _total_row(ws, row, col, label, first, last):
-    """Ay toplamı: proje satırlarının toplamı (formül)."""
-    _set(ws, (row, col), label, font=_font(10, True, "FFFFFF"), fill=DARK, border=CELL_BORDER)
-    for k in (1, 2, 3):
-        letter = ws.cell(row=row, column=col + k).column_letter
-        formula = f"=SUM({letter}{first}:{letter}{last})" if last >= first else "=0"
-        _f(ws, (row, col + k), formula, font=_font(10, True, "FFFFFF"), fill=DARK,
-           alignment=Alignment(horizontal="center"), border=CELL_BORDER)
+def _section_title(ws, row, text, note=""):
+    _merge(ws, row, 1, 8, text, font=_font(12, True, INK))
+    if note:
+        _merge(ws, row, 9, COLS, note, font=_font(8, color=SUB), alignment=Alignment(horizontal="right"))
+    _line(ws, row, 1, COLS, bottom=hair)
+    ws.row_dimensions[row].height = 20
+    return row + 2
 
 
-def _pie(ws, anchor, title, cats, values, colors, from_rows=False, width=9.4, height=8.0):
-    pie = PieChart()
-    pie.add_data(values, titles_from_data=False, from_rows=from_rows)
-    pie.set_categories(cats)
-    pie.title = _title(title)
+def _tile(ws, row, c1, c2, label, value, sub="", color=INK, value_format="0", sub_formula=False, sub_format=None):
+    """Özet kutusu: üstte renkli kalın şerit, etiket, büyük değer, alt açıklama."""
+    _merge(ws, row, c1, c2, label.upper(), font=_font(8, True, SUB), alignment=Alignment(indent=1, vertical="bottom"))
+    _merge(ws, row + 1, c1, c2, value, formula=str(value).startswith("="), font=_font(22, True, color),
+           number_format=value_format, alignment=Alignment(indent=1, vertical="center", horizontal="left"))
+    _merge(ws, row + 2, c1, c2, sub, formula=sub_formula, font=_font(9, color=SUB),
+           number_format=sub_format or "General", alignment=Alignment(indent=1, horizontal="left", vertical="top"))
+    top = Side(style="thick", color=color)
+    for r in range(row, row + 3):
+        for c in range(c1, c2 + 1):
+            ws.cell(row=r, column=c).border = Border(
+                top=top if r == row else None, bottom=hair if r == row + 2 else None,
+                left=hair if c == c1 else None, right=hair if c == c2 else None)
+    ws.row_dimensions[row].height = 20
+    ws.row_dimensions[row + 1].height = 32
+    ws.row_dimensions[row + 2].height = 18
+
+
+def _doughnut(ws, anchor, title, cats, values, colors, width=9.4, height=7.6):
+    ch = DoughnutChart(holeSize=58)
+    ch.add_data(values, titles_from_data=False)
+    ch.set_categories(cats)
+    ch.title = _title(title)
+    ch.style = 10
     for i, color in enumerate(colors):
         pt = DataPoint(idx=i)
         pt.graphicalProperties.solidFill = color
         pt.graphicalProperties.line.solidFill = "FFFFFF"
-        pie.series[0].dPt.append(pt)
+        pt.graphicalProperties.line.width = 19050
+        ch.series[0].dPt.append(pt)
     labels = DataLabelList()
     labels.showPercent = True
     for attr in ("showVal", "showSerName", "showCatName", "showLegendKey"):
         setattr(labels, attr, False)
     labels.txPr = _rich(900, True, "FFFFFF")
-    pie.series[0].dLbls = labels
-    pie.legend.position = "b"
-    pie.legend.txPr = _rich(800)
-    pie.width, pie.height = width, height
-    ws.add_chart(pie, anchor)
+    ch.series[0].dLbls = labels
+    ch.legend = Legend(legendPos="r")
+    ch.legend.txPr = _rich(900, False, INK)
+    ch.width, ch.height = width, height
+    ws.add_chart(ch, anchor)
 
 
-def _section(ws, row, text):
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=9)
-    _set(ws, (row, 1), text, font=_font(11, True, "FFFFFF"), fill=SECTION,
-         alignment=Alignment(horizontal="center", vertical="center"))
-    ws.row_dimensions[row].height = 20
+def _chart_data(ws, row, rows):
+    """Grafik yardımcı verisini yazdırma alanı dışına (O-P sütunları) yazar; ilk satırın numarasını döndürür."""
+    for i, (label, value) in enumerate(rows):
+        _set(ws, (row + i, DATA_COL), label, font=_font(8, color=SUB))
+        cell = (_f if isinstance(value, str) else _set)(ws, (row + i, DATA_COL + 1), value, font=_font(8, color=SUB))
+        cell.number_format = "0"
+    return row
 
 
 # --------------------------------------------------------------------------- #
@@ -148,160 +190,214 @@ def build_monthly_workbook(year, month, org_name):
     month_name = MONTHS_TR[month]
 
     wb = Workbook()
-    wb._named_styles["Normal"].font = _font()
+    wb._named_styles["Normal"].font = _font(10, color=INK)
     wb.calculation = CalcProperties(fullCalcOnLoad=True)
     ws = wb.active
     ws.title = f"{month_name} {year}"
     ws.sheet_view.showGridLines = False
-    for col, width in zip("ABCDEFGHI", (24, 10, 10, 10, 3, 24, 10, 10, 10)):
-        ws.column_dimensions[col].width = width
+    for c in range(1, COLS + 1):
+        ws.column_dimensions[L(c)].width = FIRST_COL_W if c == 1 else COL_W
+    ws.column_dimensions[L(DATA_COL)].width = 24
+    _set(ws, (1, DATA_COL), "Grafik verisi (yazdırılmaz)", font=_font(8, True, SUB))
 
-    # Başlık
-    ws.merge_cells("A1:I1")
-    _set(ws, "A1", f"AYLIK DESTEK İSTATİSTİĞİ — {month_name.upper()} {year}", font=_font(16, True, NAVY),
-         fill=LIGHT, alignment=Alignment(horizontal="center", vertical="center"))
-    ws.row_dimensions[1].height = 32
-    ws.merge_cells("A2:I2")
-    _set(ws, "A2", f"{org_name}  ·  Bilgilendirme amaçlıdır  ·  Oluşturma: {datetime.now():%d.%m.%Y}",
-         font=_font(9, color=MUTED), alignment=Alignment(horizontal="center"))
+    # ================= SAYFA 1: AYLIK ÖZET =================
+    row = _page_header(ws, 1, "AYLIK DESTEK İSTATİSTİĞİ", f"{month_name} {year}",
+                       f"{org_name}   ·   Bilgilendirme amaçlıdır   ·   Oluşturma: {datetime.now():%d.%m.%Y}")
 
-    # ---------------- Sayfa 1: seçilen ayın özeti ----------------
-    _section(ws, 4, f"{month_name.upper()} {year} ÖZETİ")
-    _header(ws, 5, 1)
     month_data = data.get(month, {})
     shown = [p for p in projects if p.active or p.id in month_data]
-    first = 6
-    for i, p in enumerate(shown):
-        d = month_data.get(p.id, {SOURCE_USER: 0, SOURCE_SYSTEM: 0})
-        _data_row(ws, first + i, 1, p.name, d[SOURCE_USER], d[SOURCE_SYSTEM])
+    # Konumlar önceden hesaplanır; özet kutuları tablodaki toplam satırına bağlanır
+    tiles_row = row
+    table_title_row = tiles_row + 4
+    head = table_title_row + 2
+    first = head + 1
     last = first + len(shown) - 1
     total_row = last + 1
-    _total_row(ws, total_row, 1, f"{month_name} Toplam", first, last)
-    rate_row = total_row + 1
-    _set(ws, (rate_row, 1), "Oran", font=_font(9, True, MUTED))
-    for k, col in ((1, "B"), (2, "C")):
-        _f(ws, (rate_row, 1 + k), f"=IF($D${total_row}=0,0,{col}{total_row}/$D${total_row})",
-           font=_font(9, True, MUTED), number_format="0.0%", alignment=Alignment(horizontal="center"))
+    tot = lambda col: f"${col}${total_row}"   # noqa: E731
 
-    note_row = rate_row + 1
-    ws.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=9)
-    _set(ws, (note_row, 1), "Bireysel: kullanıcı işlemi kaynaklı · Sistemsel: sistem kaynaklı talepler. "
-                            "Arşivlenen kayıtlar dahil değildir. Kaynak: Teknik Destek Kayıt Programı.",
-         font=_font(8, color=MUTED), alignment=Alignment(horizontal="left"))
-
-    # Önceki ayla karşılaştırma ve açıklamalar (sağ taraf)
     prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
     prev_total = _count_month(prev_year, prev_month)
-    notes = [
-        ("Önceki ay", f"{MONTHS_TR[prev_month]} {prev_year}: {prev_total} kayıt"),
-        ("Değişim", f'=IF({prev_total}=0,"-",($D${total_row}-{prev_total})/{prev_total})'),
-        ("Bireysel", "Kullanıcı işlemi kaynaklı talepler"),
-        ("Sistemsel", "Sistem kaynaklı talepler"),
-    ]
-    for i, (label, value) in enumerate(notes):
-        r = 5 + i
-        _set(ws, (r, 6), label, font=_font(9, True, NAVY))
-        ws.merge_cells(start_row=r, start_column=7, end_row=r, end_column=9)
-        if value.startswith("="):
-            _f(ws, (r, 7), value, font=_font(9, True), number_format="+0.0%;-0.0%;0.0%",
-               alignment=Alignment(horizontal="left"))
-        else:
-            _set(ws, (r, 7), value, font=_font(9, color=MUTED))
+    _tile(ws, tiles_row, 1, 3, "Toplam talep", f"={tot('I')}", f"{len(shown)} proje", INK)
+    _tile(ws, tiles_row, 4, 6, "Bireysel", f"={tot('E')}",
+          f'=IF({tot("I")}=0,"",{tot("E")}/{tot("I")})', BIREYSEL, sub_formula=True, sub_format='0.0%" pay"')
+    _tile(ws, tiles_row, 7, 9, "Sistemsel", f"={tot('G')}",
+          f'=IF({tot("I")}=0,"",{tot("G")}/{tot("I")})', SISTEMSEL, sub_formula=True, sub_format='0.0%" pay"')
+    _tile(ws, tiles_row, 10, 13, "Önceki aya göre",
+          f'=IF({prev_total}=0,"–",({tot("I")}-{prev_total})/{prev_total})',
+          f"{MONTHS_TR[prev_month]} {prev_year}: {prev_total} talep", INK, value_format="+0.0%;-0.0%;0.0%")
 
-    # Dairesel grafikler: kaynak dağılımı ve projelere göre
-    chart_row = note_row + 2
-    _pie(ws, f"A{chart_row}", f"{month_name} {year} — Bireysel / Sistemsel",
-         Reference(ws, min_col=2, max_col=3, min_row=5, max_row=5),
-         Reference(ws, min_col=2, max_col=3, min_row=total_row, max_row=total_row),
-         (ORANGE, BLUE), from_rows=True)
-    _pie(ws, f"F{chart_row}", f"{month_name} {year} — Projelere Göre",
-         Reference(ws, min_col=1, min_row=first, max_row=last),
-         Reference(ws, min_col=4, min_row=first, max_row=last),
-         PROJECT_COLORS[:len(shown)])
+    _section_title(ws, table_title_row, "Projelere Göre Dağılım", "Pay: projenin ay içindeki payı")
+    for c1, c2, label in ((1, 4, "PROJE"), (5, 6, "BİREYSEL"), (7, 8, "SİSTEMSEL"), (9, 10, "TOPLAM"), (11, 13, "PAY")):
+        _merge(ws, head, c1, c2, label, font=_font(8, True, SUB),
+               alignment=Alignment(horizontal="left" if c1 == 1 else "center", indent=1 if c1 == 1 else 0))
+    _line(ws, head, 1, COLS, bottom=ink_thin)
 
-    # ---------------- Sayfa 2: yıllık genel istatistik ----------------
-    year_row = chart_row + 18
-    ws.row_breaks.append(Break(id=year_row - 1))
-    _section(ws, year_row, f"YILLIK GENEL İSTATİSTİK — {year} (Ocak – {month_name})")
-    for col, _ in BLOCKS[:1 if month <= 6 else 2]:
-        _header(ws, year_row + 1, col)
+    for i, p in enumerate(shown):
+        r = first + i
+        d = month_data.get(p.id, {SOURCE_USER: 0, SOURCE_SYSTEM: 0})
+        _line(ws, r, 1, COLS, bottom=hair, fill=ZEBRA if i % 2 else None)
+        _merge(ws, r, 1, 4, p.name, font=_font(10, False, INK), alignment=Alignment(indent=1, vertical="center"))
+        _merge(ws, r, 5, 6, d[SOURCE_USER], font=_font(10, color=BIREYSEL), number_format=ZERO_DASH,
+               alignment=Alignment(horizontal="center", vertical="center"))
+        _merge(ws, r, 7, 8, d[SOURCE_SYSTEM], font=_font(10, color=SISTEMSEL), number_format=ZERO_DASH,
+               alignment=Alignment(horizontal="center", vertical="center"))
+        _merge(ws, r, 9, 10, f"=E{r}+G{r}", formula=True, font=_font(10, True, INK), number_format=ZERO_DASH,
+               alignment=Alignment(horizontal="center", vertical="center"))
+        _merge(ws, r, 11, 13, f"=IF({tot('I')}=0,0,I{r}/{tot('I')})", formula=True, font=_font(9, color=SUB),
+               number_format="0.0%", alignment=Alignment(horizontal="right", indent=1, vertical="center"))
+        ws.row_dimensions[r].height = 21
+    if shown:
+        ws.conditional_formatting.add(
+            f"K{first}:K{last}",
+            DataBarRule(start_type="num", start_value=0, end_type="num", end_value=1, color="A9B8CC", showValue=True))
 
-    month_totals = []          # (satır, sütun) ay toplamı hücreleri
-    project_rows = []          # (satır, sütun) proje satırları (yıllık proje toplamı için)
-    rows_at = {1: year_row + 2, 6: year_row + 2}
-    for m in range(1, month + 1):
-        col = BLOCKS[0][0] if m <= 6 else BLOCKS[1][0]
-        r = rows_at[col]
-        ws.merge_cells(start_row=r, start_column=col, end_row=r, end_column=col + 3)
-        _set(ws, (r, col), MONTHS_TR[m], font=_font(10, True, NAVY), fill=LIGHT,
-             alignment=Alignment(horizontal="center"))
-        r += 1
-        m_data = data.get(m, {})
-        m_projects = [p for p in projects if p.id in m_data]
-        start = r
-        for p in m_projects:
-            d = m_data[p.id]
-            _data_row(ws, r, col, p.name, d[SOURCE_USER], d[SOURCE_SYSTEM])
-            project_rows.append((r, col))
-            r += 1
-        if not m_projects:
-            _set(ws, (r, col), "Kayıt yok", font=_font(9, color=MUTED))
-            r += 1
-        _total_row(ws, r, col, f"{MONTHS_TR[m]} Toplam", start, start + len(m_projects) - 1)
-        month_totals.append((r, col))
-        rows_at[col] = r + 1
+    _line(ws, total_row, 1, COLS, top=ink_thin, fill=TOTAL_BG)
+    _merge(ws, total_row, 1, 4, f"{month_name} Toplam", font=_font(10, True, INK),
+           alignment=Alignment(indent=1, vertical="center"))
+    for c1, c2, letter, color in ((5, 6, "E", BIREYSEL), (7, 8, "G", SISTEMSEL), (9, 10, "I", INK)):
+        formula = f"=SUM({letter}{first}:{letter}{last})" if shown else "=0"
+        _merge(ws, total_row, c1, c2, formula, formula=True, font=_font(11, True, color),
+               alignment=Alignment(horizontal="center", vertical="center"))
+    _merge(ws, total_row, 11, 13, f"=IF({tot('I')}=0,0,1)", formula=True, font=_font(9, True, SUB),
+           number_format="0%", alignment=Alignment(horizontal="right", indent=1, vertical="center"))
+    ws.row_dimensions[total_row].height = 24
 
-    # Genel toplam
-    g = max(rows_at.values()) + 1
-    _set(ws, (g, 1), "Genel Toplam", font=_font(12, True, "FFFFFF"), fill=SECTION)
-    for k in (1, 2, 3):
-        refs = "+".join(ws.cell(row=r, column=c + k).coordinate for r, c in month_totals)
-        _f(ws, (g, 1 + k), f"={refs}", font=_font(12, True, "FFFFFF"), fill=SECTION,
-           alignment=Alignment(horizontal="center"))
-    ws.row_dimensions[g].height = 22
+    note = total_row + 2
+    _merge(ws, note, 1, COLS, "Bireysel: kullanıcı işlemi kaynaklı talepler   ·   Sistemsel: sistem kaynaklı talepler   ·   "
+                              "Arşivlenen kayıtlar dahil değildir.", font=_font(8, color=SUB))
 
-    # Yıllık proje toplamları (grafik için; ay bloklarındaki proje satırlarından formülle)
-    y = g + 2
-    _set(ws, (y, 6), f"{year} Proje Toplamları", font=_font(10, True, NAVY))
-    _header(ws, y + 1, 6)
+    charts = note + 2
+    _section_title(ws, charts, "Grafikler")
+    src = _chart_data(ws, 3, [("Bireysel", f"={tot('E')}"), ("Sistemsel", f"={tot('G')}")])
+    _doughnut(ws, f"A{charts + 2}", "Bireysel / Sistemsel",
+              Reference(ws, min_col=DATA_COL, min_row=src, max_row=src + 1),
+              Reference(ws, min_col=DATA_COL + 1, min_row=src, max_row=src + 1), (BIREYSEL, SISTEMSEL))
+    if shown:
+        _doughnut(ws, f"H{charts + 2}", "Projelere Göre",
+                  Reference(ws, min_col=1, min_row=first, max_row=last),
+                  Reference(ws, min_col=9, min_row=first, max_row=last), PROJECT_COLORS[:len(shown)])
+    page1_end = charts + 18
+
+    # ================= SAYFA 2: YILLIK GENEL İSTATİSTİK =================
+    ws.row_breaks.append(Break(id=page1_end))
+    row = _page_header(ws, page1_end + 1, "YILLIK GENEL İSTATİSTİK", f"{year}",
+                       f"Ocak – {month_name} {year}   ·   Aylara ve projelere göre Bireysel / Sistemsel talepler")
+
     year_projects = [p for p in projects if any(p.id in data.get(m, {}) for m in range(1, month + 1))]
-    left = f"$A${year_row + 2}:$A${rows_at[1]}"
-    right = f"$F${year_row + 2}:$F${rows_at[6]}"
-    for i, p in enumerate(year_projects):
-        r = y + 2 + i
-        _set(ws, (r, 6), p.name, font=_font(10, False, NAVY), border=CELL_BORDER)
-        for k, (lc, rc) in enumerate((("B", "G"), ("C", "H")), start=1):
-            lr = f"${lc}${year_row + 2}:${lc}${rows_at[1]}"
-            rr = f"${rc}${year_row + 2}:${rc}${rows_at[6]}"
-            cell = _f(ws, (r, 6 + k), f"=SUMIF({left},$F{r},{lr})+SUMIF({right},$F{r},{rr})",
-                      font=_font(10), alignment=Alignment(horizontal="center"), border=CELL_BORDER)
-            if k == 1:
-                cell.fill = BIREYSEL_FILL
-        _f(ws, (r, 9), f"=G{r}+H{r}", font=_font(10, True, "FFFFFF"), fill=DARK,
-           alignment=Alignment(horizontal="center"), border=CELL_BORDER)
-    yp_last = y + 1 + max(len(year_projects), 1)
+    # Projeler 3'erli gruplar halinde gösterilir; her matrisin son grubu "Toplam"
+    groups = [year_projects[i:i + 3] for i in range(0, len(year_projects), 3)] or [[]]
+    for gi, group in enumerate(groups):
+        if gi:
+            row += 1
+        head1, head2 = row, row + 1
+        blocks = [(p.name, p) for p in group] + [("TOPLAM", None)]
+        for bi, (label, p) in enumerate(blocks):
+            c = 2 + bi * 3
+            _merge(ws, head1, c, c + 2, label, font=_font(9, True, INK if p is None else SUB),
+                   alignment=Alignment(horizontal="center"))
+            _line(ws, head1, c, c + 2, bottom=hair)
+            for k, (sub, sub_color) in enumerate((("Bireysel", BIREYSEL), ("Sistemsel", SISTEMSEL), ("Toplam", INK))):
+                _set(ws, (head2, c + k), sub, font=_font(7, True, sub_color), alignment=Alignment(horizontal="center"))
+        _set(ws, (head2, 1), "AY", font=_font(8, True, SUB), alignment=Alignment(indent=1))
+        _line(ws, head2, 1, COLS, bottom=ink_thin)
 
-    pie_row = yp_last + 2
-    _pie(ws, f"A{pie_row}", f"{year} — Bireysel / Sistemsel",
-         Reference(ws, min_col=2, max_col=3, min_row=year_row + 1, max_row=year_row + 1),
-         Reference(ws, min_col=2, max_col=3, min_row=g, max_row=g), (ORANGE, BLUE), from_rows=True,
-         width=8.6, height=6.6)
+        m_first = head2 + 1
+        m_last = m_first + month - 1
+        for m in range(1, month + 1):
+            r = m_first + m - 1
+            _line(ws, r, 1, COLS, bottom=hair, fill=ZEBRA if m % 2 == 0 else None)
+            _set(ws, (r, 1), MONTHS_TR[m], font=_font(10, m == month, INK), alignment=Alignment(indent=1))
+            m_data = data.get(m, {})
+            for bi, (_, p) in enumerate(blocks):
+                c = 2 + bi * 3
+                if p is not None:
+                    d = m_data.get(p.id, {SOURCE_USER: 0, SOURCE_SYSTEM: 0})
+                    user, system, bold = d[SOURCE_USER], d[SOURCE_SYSTEM], False
+                else:
+                    # Toplam: o ayın tüm projeleri (diğer matrislerdekiler dahil)
+                    user = sum(v[SOURCE_USER] for v in m_data.values())
+                    system = sum(v[SOURCE_SYSTEM] for v in m_data.values())
+                    bold = True
+                    for k in range(3):
+                        ws.cell(row=r, column=c + k).fill = PatternFill("solid", fgColor=TOTAL_BG)
+                _set(ws, (r, c), user, font=_font(10, bold, BIREYSEL), number_format=ZERO_DASH,
+                     alignment=Alignment(horizontal="center"))
+                _set(ws, (r, c + 1), system, font=_font(10, bold, SISTEMSEL), number_format=ZERO_DASH,
+                     alignment=Alignment(horizontal="center"))
+                _f(ws, (r, c + 2), f"={L(c)}{r}+{L(c + 1)}{r}", font=_font(10, True, INK), number_format=ZERO_DASH,
+                   alignment=Alignment(horizontal="center"))
+            ws.row_dimensions[r].height = 19
+
+        g = m_last + 1
+        _line(ws, g, 1, COLS, top=ink_line, fill=TOTAL_BG)
+        _set(ws, (g, 1), "Genel Toplam", font=_font(10, True, INK), alignment=Alignment(indent=1, vertical="center"))
+        for bi in range(len(blocks)):
+            c = 2 + bi * 3
+            for k, color in enumerate((BIREYSEL, SISTEMSEL, INK)):
+                _f(ws, (g, c + k), f"=SUM({L(c + k)}{m_first}:{L(c + k)}{m_last})", font=_font(11, True, color),
+                   number_format=ZERO_DASH, alignment=Alignment(horizontal="center", vertical="center"))
+        ws.row_dimensions[g].height = 24
+        tc = 2 + (len(blocks) - 1) * 3         # bu matristeki "Toplam" bloğunun ilk sütunu
+        row = g + 2
+
+    # Yıllık özet cümlesi
+    total, user, system = f"{L(tc + 2)}{g}", f"{L(tc)}{g}", f"{L(tc + 1)}{g}"
+    _merge(ws, row, 1, COLS,
+           f'="Yıl toplamı "&{total}&" talep   ·   Aylık ortalama "&ROUND({total}/{month},0)'
+           f'&"   ·   Bireysel %"&ROUND(IF({total}=0,0,{user}/{total})*100,0)'
+           f'&"   ·   Sistemsel %"&ROUND(IF({total}=0,0,{system}/{total})*100,0)',
+           formula=True, font=_font(10, True, INK))
+
+    # Grafikler: aylık eğilim (yığılmış sütun) ve yıllık proje dağılımı
+    charts = row + 2
+    _section_title(ws, charts, "Grafikler")
+    trend = BarChart()
+    trend.type, trend.grouping, trend.overlap, trend.gapWidth = "col", "stacked", 100, 55
+    trend.add_data(Reference(ws, min_col=tc, max_col=tc + 1, min_row=head2, max_row=m_last), titles_from_data=True)
+    trend.set_categories(Reference(ws, min_col=1, min_row=m_first, max_row=m_last))
+    trend.title = _title("Aylara Göre Talepler")
+    trend.style = 10
+    for s, color in zip(trend.series, (BIREYSEL, SISTEMSEL)):
+        s.graphicalProperties.solidFill = color
+        s.graphicalProperties.line.solidFill = "FFFFFF"
+    trend.x_axis.delete = trend.y_axis.delete = False
+    trend.y_axis.majorGridlines = None
+    trend.y_axis.numFmt = "0"
+    trend.x_axis.txPr = _rich(800, False, SUB)
+    trend.y_axis.txPr = _rich(800, False, SUB)
+    trend.legend = Legend(legendPos="t")
+    trend.legend.txPr = _rich(800, False, INK)
+    trend.width, trend.height = 13.2, 7.6
+    ws.add_chart(trend, f"A{charts + 2}")
+
     if year_projects:
-        _pie(ws, f"F{pie_row}", f"{year} — Projelere Göre",
-             Reference(ws, min_col=6, min_row=y + 2, max_row=yp_last),
-             Reference(ws, min_col=9, min_row=y + 2, max_row=yp_last),
-             PROJECT_COLORS[:len(year_projects)], width=8.6, height=6.6)
+        rows = []
+        for p in year_projects:
+            rows.append((p.name, sum(v.get(p.id, {}).get(SOURCE_USER, 0) + v.get(p.id, {}).get(SOURCE_SYSTEM, 0)
+                                     for m, v in data.items() if m <= month)))
+        src = _chart_data(ws, 7, rows)
+        _doughnut(ws, f"I{charts + 2}", "Projelere Göre (yıl)",
+                  Reference(ws, min_col=DATA_COL, min_row=src, max_row=src + len(rows) - 1),
+                  Reference(ws, min_col=DATA_COL + 1, min_row=src, max_row=src + len(rows) - 1),
+                  PROJECT_COLORS[:len(rows)], width=8.2, height=7.6)
 
-    foot = pie_row + 13
-    # Yazdırma: A4 dikey, sayfa genişliğine sığdır
-    ws.print_area = f"A1:I{foot}"
+    end = charts + 18
+    _merge(ws, end, 1, COLS, "Kaynak: Teknik Destek Kayıt Programı   ·   Bireysel: kullanıcı işlemi kaynaklı   ·   "
+                             "Sistemsel: sistem kaynaklı   ·   Arşivlenen kayıtlar dahil değildir.",
+           font=_font(8, color=SUB))
+
+    # Yazdırma: A4 dikey, sayfa genişliğine sığdır (O-P yardımcı sütunları basılmaz)
+    ws.print_area = f"A1:{L(COLS)}{end}"
     ws.page_setup.orientation = "portrait"
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.page_margins.left = ws.page_margins.right = 0.5
+    ws.page_margins.left = ws.page_margins.right = 0.55
+    ws.page_margins.top = ws.page_margins.bottom = 0.6
     ws.print_options.horizontalCentered = True
-    ws.oddFooter.left.text = f"{org_name}"
+    ws.oddFooter.left.text = org_name
+    ws.oddFooter.left.size = 8
     ws.oddFooter.right.text = "Sayfa &P / &N"
+    ws.oddFooter.right.size = 8
     return wb

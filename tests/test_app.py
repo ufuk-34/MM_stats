@@ -395,19 +395,15 @@ def test_10c_monthly_report(client, app):
     text = " ".join(str(v) for v in cells.values())
     # KVKK: birimlere gönderilen dosyada kişisel veri bulunmaz
     assert "Gizli Kişi" not in text and "0555" not in text
-    # Haziran özeti: 1 bireysel, 0 sistemsel (arşivlenen dahil değil)
     rows = {ws.cell(row=r, column=1).value: r for r in range(1, ws.max_row + 1)}
-    june_total = rows["Haziran Toplam"]          # ay toplamı satırı (formül)
-    assert ws.cell(row=june_total, column=2).value.startswith("=SUM(")
+    # Sayfa 1 tablosu: Proje (A) | Bireysel (E) | Sistemsel (G) | Toplam (I) — arşivlenen dahil değil
+    assert ws.cell(row=rows["Haziran Toplam"], column=5).value.startswith("=SUM(")
     project_row = rows["Dijital Otomasyon Projesi 1"]
-    assert [ws.cell(row=project_row, column=c).value for c in (2, 3)] == [1, 0]
-    # Yıllık bölüm: Mayıs bloğu (2 proje) ve genel toplam formülü
-    assert "Mayıs" in text and "Genel Toplam" in text
-    may_values = [(ws.cell(row=r, column=1).value, ws.cell(row=r, column=2).value, ws.cell(row=r, column=3).value)
-                  for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value == "Dijital Otomasyon Projesi 2"]
-    assert ("Dijital Otomasyon Projesi 2", 0, 1) in may_values
-    assert ws.cell(row=rows["Genel Toplam"], column=4).value.startswith("=")
-    assert len(ws._charts) == 4      # ay ve yıl için ikişer dairesel grafik
+    assert [ws.cell(row=project_row, column=c).value for c in (5, 7)] == [1, 0]
+    # Sayfa 2 matrisi: Mayıs satırında 2. projenin Bireysel/Sistemsel değerleri (sütun E-F)
+    assert [ws.cell(row=rows["Mayıs"], column=c).value for c in (5, 6)] == [0, 1]
+    assert ws.cell(row=rows["Genel Toplam"], column=4).value.startswith("=SUM(")
+    assert len(ws._charts) == 4      # 3 halka grafik + aylık eğilim grafiği
     # Geçersiz parametre
     assert client.get("/reports/monthly", query_string={"year": year, "month": 13}).status_code == 400
 
