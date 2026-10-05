@@ -36,6 +36,8 @@ FIELD_LABELS = {
     "status": "Durum",
 }
 EDITABLE_FIELDS = tuple(FIELD_LABELS)
+# "Benzer kayıt": talep sahibi dışındaki tüm alanlar kopyalanır
+COPY_FIELDS = tuple(f for f in EDITABLE_FIELDS if f not in ("requester_name", "requester_phone"))
 
 
 # --------------------------------------------------------------------------- #
@@ -202,6 +204,11 @@ def new():
         data, errors = parse_ticket_form(request.form)
         if not errors:
             ticket = create_ticket(data, current_user)
+            if request.form.get("save_and_similar"):
+                # Aynı özelliklerle yeni kayıt: yalnızca talep sahibi değiştirilir
+                flash(f"{ticket.ticket_no} numaralı kayıt oluşturuldu. Benzer kayıt için yeni talep sahibini giriniz.",
+                      "success")
+                return redirect(url_for("tickets.new", kopya=ticket.id))
             if request.form.get("save_and_new"):
                 flash(f"{ticket.ticket_no} numaralı kayıt oluşturuldu.", "success")
                 return redirect(url_for("tickets.new", project_id=ticket.project_id))
@@ -209,7 +216,13 @@ def new():
             return redirect(url_for("tickets.detail", ticket_id=ticket.id))
         flash("Lütfen işaretli alanları kontrol ediniz.", "danger")
         values = request.form
+        copied_from = None
+    elif request.args.get("kopya", type=int):
+        # Benzer kayıt: kaynak kaydın alanları, talep sahibi boş
+        copied_from = get_ticket_or_404(request.args.get("kopya", type=int))
+        values = {f: "" if getattr(copied_from, f) is None else str(getattr(copied_from, f)) for f in COPY_FIELDS}
     else:
+        copied_from = None
         values = {
             "project_id": str(request.args.get("project_id", type=int) or default_project_id(current_user) or ""),
             "channel": CHANNEL_PHONE,
@@ -217,7 +230,7 @@ def new():
             "status": STATUS_OPEN,
         }
     return render_template(
-        "tickets/form.html", ticket=None, values=values, errors=errors,
+        "tickets/form.html", ticket=None, values=values, errors=errors, copied_from=copied_from,
         projects=active_projects(), categories=active_categories(),
         source_hints=SOURCE_HINTS, quick_durations=QUICK_DURATIONS, now=datetime.now(),
     ), (400 if errors else 200)

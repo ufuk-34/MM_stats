@@ -11,6 +11,8 @@
   <div class="head-actions">
     <a class="btn btn-light" href="{{ url_for('tickets.index') }}">← Kayıtlar</a>
     {% if not ticket.archived %}
+    <a class="btn btn-secondary" href="{{ url_for('tickets.new', kopya=ticket.id) }}"
+       title="Bu kaydın bilgileriyle yeni kayıt açar; yalnızca talep sahibini girersiniz">Benzer Kayıt Oluştur</a>
     <a class="btn btn-primary" href="{{ url_for('tickets.edit', ticket_id=ticket.id) }}">Düzenle</a>
     {% endif %}
   </div>

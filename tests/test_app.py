@@ -476,6 +476,40 @@ def test_status_change_reopen_and_audit(client, app):
         assert actions == ["create", "status", "status"]
 
 
+def test_save_and_similar_keeps_fields_except_requester(client, app):
+    """Tek personel hızlı giriş: kaydet ve benzerini gir -> sadece talep sahibi değişir."""
+    i = ids(app)
+    login(client, "personel1")
+    r = post_ticket(client, app, source="user", category_id=i["categories"][2], project_id=i["projects"][1],
+                    description="Toplu bildirim ekranında hata", duration_minutes=4, save_and_similar=1)
+    assert r.status_code == 302 and "kopya=" in r.headers["Location"]
+    html = page_text(client.get(r.headers["Location"]))
+    assert "numaralı kayıttaki bilgiler aktarıldı" in html
+    assert "Toplu bildirim ekranında hata" in html                          # açıklama kopyalandı
+    assert 'name="requester_name" value=""' in html                         # talep sahibi boş
+    assert 'name="requester_phone" value=""' in html
+    assert f'name="project_id" value="{i["projects"][1]}" checked' in html  # proje seçili
+    # Yalnızca adı değiştirip ikinci kayıt
+    data = ticket_form(app, source="user", category_id=i["categories"][2], project_id=i["projects"][1],
+                       description="Toplu bildirim ekranında hata", duration_minutes=4,
+                       requester_name="İkinci Kişi", requester_phone="")
+    data["csrf_token"] = csrf(client)
+    assert client.post("/tickets/new", data=data).status_code == 302
+    with app.app_context():
+        a, b = db.session.execute(db.select(T).order_by(T.id)).scalars().all()
+        assert (a.project_id, a.category_id, a.source, a.description) == (b.project_id, b.category_id, b.source, b.description)
+        assert b.requester_name == "İkinci Kişi" and b.requester_phone is None and b.ticket_no != a.ticket_no
+
+
+def test_copy_from_detail_respects_ownership(client, app):
+    own = make_ticket(app, "personel1")
+    other = make_ticket(app, "personel2")
+    login(client, "personel1")
+    assert "Benzer Kayıt Oluştur" in page_text(client.get(f"/tickets/{own}"))
+    assert client.get("/tickets/new", query_string={"kopya": own}).status_code == 200
+    assert client.get("/tickets/new", query_string={"kopya": other}).status_code == 404   # başkasının kaydı
+
+
 def test_edit_ticket_records_changes(client, app):
     tid = make_ticket(app, "personel1")
     login(client, "personel1")

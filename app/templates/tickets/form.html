@@ -20,6 +20,12 @@
   </div>
 </div>
 
+{% if copied_from %}
+<div class="alert alert-info copy-note">
+  <strong>{{ copied_from.ticket_no }}</strong> numaralı kayıttaki bilgiler aktarıldı. Yeni talep sahibinin adını
+  (ve gerekiyorsa telefonunu) girip kaydedin; diğer alanları isterseniz değiştirebilirsiniz.
+</div>
+{% endif %}
 <form method="post" class="card ticket-form" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -124,7 +130,9 @@
       <a href="{{ url_for('tickets.detail', ticket_id=ticket.id) }}" class="btn btn-light">Vazgeç</a>
     {% else %}
       <button type="submit" class="btn btn-primary">Kaydet</button>
-      <button type="submit" name="save_and_new" value="1" class="btn btn-secondary">Kaydet ve Yeni Kayıt</button>
+      <button type="submit" name="save_and_similar" value="1" class="btn btn-secondary"
+              title="Kaydeder ve aynı bilgilerle yeni form açar; yalnızca talep sahibini değiştirirsiniz">Kaydet ve Benzerini Gir</button>
+      <button type="submit" name="save_and_new" value="1" class="btn btn-light">Kaydet ve Boş Yeni Kayıt</button>
       <a href="{{ url_for('dashboard.index') }}" class="btn btn-light">Vazgeç</a>
     {% endif %}
   </div>
